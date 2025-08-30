@@ -6,7 +6,7 @@ let transcriber:AutomaticSpeechRecognitionPipeline | null=null;
 
 const transcriberConfig={
     return_timestamps:true,
-    chunk_length_s:30,
+    chunk_length_s:20,
     stride_length_s:5
 }
 
