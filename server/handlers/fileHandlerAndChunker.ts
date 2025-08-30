@@ -1,15 +1,14 @@
 import { split, textsplitter } from "../utils/contentSplitter";
-import { audioTranscriber, audioFromVideoTranscriber } from "../utils/audioTranscriber";
 import { embedder } from "../utils/embedder";
 import { t } from "elysia";
 import { getPineconeClient } from "../db/init";
 import { findOrUpsertConversation } from "../db/operations";
 import { mkdir, unlink } from "fs/promises"
 import type { User } from "./userHandler";
-import type { AutomaticSpeechRecognitionOutput } from "@huggingface/transformers";
 import ffmpeg from "fluent-ffmpeg";
-import MultiMediaProcessor from "../workers/master";
 import type { MessageDto } from "../workers/workerDto";
+import axios from "axios";
+import path from "path";
 
 const pineConeClient = await getPineconeClient();
 
@@ -118,22 +117,23 @@ export const multiMediaUploader = async ({ body, user }: {
 
     const file = body.file as File;
     const convoId = body.convoId as string;
-    const tempDir = './temp/multimedia';
+    const tempDir = path.join(__dirname, '../processor-ms/temp/multimedia');
 
+
+    
     let isConvoValid = await findOrUpsertConversation(convoId, user);
     if (isConvoValid?.messages.length > 250) throw new Error("Conversation length exceeded");
-
+    
     await mkdir(tempDir, { recursive: true });
 
     const timestamp = Date.now()
     let tempFilename = `temp_${timestamp}_${file.name}`
     let tempPath = `${tempDir}/${tempFilename}`;
     let chunks!: MessageDto;
-
-
+    
+    
     try {
         await Bun.write(tempPath, file);
-        const processor = new MultiMediaProcessor();
         
         if (file.type.includes("audio")) {
             
@@ -154,22 +154,31 @@ export const multiMediaUploader = async ({ body, user }: {
                 .save(proccessedAudioPath)
             })  
             
-            const workerId = processor.createWorker();
             
-            chunks=await processor.processMedia(workerId,proccessedAudioPath,"audio");
+            const res = await axios.post("http://localhost:5000/api/v1/processor",{
+                filepath:proccessedAudioPath,
+                type : "audio"
+            });
+
+            
+            chunks = res.data; 
             
             await unlink(proccessedAudioPath);
 
         }
         if (file.type.includes("video")) {
 
-            const workerId = processor.createWorker();
+              const res = await axios.post("http://localhost:5001/api/v1/processor",{
+                filepath:tempPath,
+                type : "video"
+            });
 
-            chunks = await processor.processMedia(workerId,tempPath,"video");
+            chunks = res.data; 
 
         }
     }
-    catch (err) {
+    catch (err:any) {
+        console.log(err?.response?.data);
         await unlink(tempPath);
         throw err;
     }
@@ -178,8 +187,6 @@ export const multiMediaUploader = async ({ body, user }: {
 
     await unlink(tempPath);
 
-    console.log(chunks);
-    return;
 
     if (!chunks) throw new Error("Error occured while processing file, Please upload again")
 

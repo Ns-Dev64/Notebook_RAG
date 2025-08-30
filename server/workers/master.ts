@@ -47,7 +47,7 @@ class MultiMediaProcessor{
 
         if(this.isFull())  throw new Error("Worker pool exhausted!");
     
-        const worker = new Worker(new URL("./multiMediaWorker.ts", import.meta.url).href);
+        const worker = new Worker(new URL('./multiMediaWorker.ts', import.meta.url));
 
 
         const workerId = `${Date.now()}_${worker.threadId}`;
@@ -93,7 +93,7 @@ class MultiMediaProcessor{
     }
 
     async processMedia(workerId:string,filepath:string, type:string){
-
+        
         return new Promise<MessageDto>((res,rej)=>{
 
             const worker = this.workerMap.get(workerId);
@@ -103,19 +103,22 @@ class MultiMediaProcessor{
                 return rej("Invalid worker Id");
             }
             
+
             const payload = {
-                filepath,
+                filePath:filepath,
                 type
             };
             
             worker.postMessage(payload);
+            
+            worker.on("message",(event:MessageDto)=>{
 
-            worker.on("message",(event:MessageEvent<MessageDto>)=>{
-                return res(event.data);
+                return res(event);
             })
 
             worker.on("error",(event)=>{
-                return rej(event.message)
+
+                return rej(event)
             })
 
 

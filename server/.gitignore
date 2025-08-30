@@ -13,6 +13,8 @@ coverage
 bun.lock
 package-lock.json
 
+temp
+
 # logs
 logs
 _.log

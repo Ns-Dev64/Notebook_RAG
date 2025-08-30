@@ -8,6 +8,7 @@ app.use(cors({
     origin:["http://localhost:5001"]
 }))
 
+app.use(express.json())
 
 
 app.post("/api/v1/processor",async(req ,res)=>{
