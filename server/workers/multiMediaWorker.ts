@@ -1,9 +1,9 @@
 declare var self:Worker;
 
 import { type AutomaticSpeechRecognitionOutput } from "@huggingface/transformers";
-import { audioTranscriber } from "../utils/audioTranscriber";
-import { audioFromVideoTranscriber } from "../utils/audioTranscriber";
-import type{ MessageDto } from "./workerDto";
+import { audioTranscriber } from "../utils/audioTranscriber.ts";
+import { audioFromVideoTranscriber } from "../utils/audioTranscriber.ts";
+import type{ MessageDto } from "./workerDto.ts";
 import type { Worker } from "node:worker_threads";
 
 

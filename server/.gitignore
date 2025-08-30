@@ -11,7 +11,7 @@ coverage
 *.lcov
 
 bun.lock
-package.lock.json
+package-lock.json
 
 # logs
 logs
