@@ -9,6 +9,7 @@ import ffmpeg from "fluent-ffmpeg";
 import type { MessageDto } from "../workers/workerDto";
 import axios from "axios";
 import path from "path";
+import type { AutomaticSpeechRecognitionOutput } from "@huggingface/transformers";
 
 const pineConeClient = await getPineconeClient();
 
@@ -168,8 +169,27 @@ export const multiMediaUploader = async ({ body, user }: {
         }
         if (file.type.includes("video")) {
 
-              const res = await axios.post("http://localhost:5001/api/v1/processor",{
-                filepath:tempPath,
+            const proccessedVideoPath=`${tempDir}/temp_${timestamp}_proccessed.wav`;
+           
+            await new Promise<void>((res, rej) => {
+                ffmpeg(tempPath)
+                    .audioCodec('pcm_s16le')
+                    .audioFrequency(16000)
+                    .audioChannels(1)
+                    .format('wav')
+                    .noVideo()
+                    .save(proccessedVideoPath)
+                    .on("end", () => {
+                        res();
+                    })
+                    .on("error", (err) => {
+                        rej(err);
+                    });
+            })
+
+
+            const res = await axios.post("http://localhost:5000/api/v1/processor",{
+                filepath:proccessedVideoPath,
                 type : "video"
             });
 
@@ -178,34 +198,32 @@ export const multiMediaUploader = async ({ body, user }: {
         }
     }
     catch (err:any) {
-        console.log(err?.response?.data);
+        
         await unlink(tempPath);
         throw err;
     }
 
-    
-
     await unlink(tempPath);
 
 
-    if (!chunks) throw new Error("Error occured while processing file, Please upload again")
+    if (!chunks.data) throw new Error("Error occured while processing file, Please upload again");
+
+
 
     let chunkEmbeddings: {
         content: string,
         embeddings: number[]
     }[] = [];
 
+    let chunkyBoi = chunks.data as AutomaticSpeechRecognitionOutput;
 
 
-    // if (Array.isArray(chunks.chunks)) {
-    //     chunkEmbeddings = await Promise.all(
-    //         chunks.chunks.map(async (chunk) => ({
-    //             content: `chunk: ${chunk.text} at timestamp:${chunk.timestamp}`,
-    //             embeddings: await embedder(chunk.text)
-    //         }))
-    //     )
-    // }
-
+    chunkEmbeddings = await Promise.all(
+        chunkyBoi.chunks!.map(async (chunk) => ({
+            content: `chunk: ${chunk.text} at timestamp:${chunk.timestamp}`,
+            embeddings: await embedder(chunk.text)
+        }))
+    )
 
 
     const vectors = chunkEmbeddings.map((embedding, idx) => {

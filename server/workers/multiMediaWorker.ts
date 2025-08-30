@@ -1,7 +1,6 @@
 import { parentPort } from "node:worker_threads";
 import { type AutomaticSpeechRecognitionOutput } from "@huggingface/transformers";
 import { audioTranscriber } from "../utils/audioTranscriber.ts";
-import { audioFromVideoTranscriber } from "../utils/audioTranscriber.ts";
 import type { MessageDto } from "./workerDto.js";
 
 if (!parentPort) {
@@ -28,7 +27,7 @@ parentPort.on("message", async (event) => {
             return parentPort?.postMessage(messagePayload);
         }
 
-        if (type === "audio") {
+        if (type === "audio" || type === "video") {
             const chunks = await audioTranscriber(filePath) as AutomaticSpeechRecognitionOutput;
 
             messagePayload.data = chunks;
@@ -36,16 +35,7 @@ parentPort.on("message", async (event) => {
             messagePayload.success = true;
 
             return parentPort?.postMessage(messagePayload);
-        }
-        else if (type === "video") {
-            const chunks = await audioFromVideoTranscriber(filePath) as AutomaticSpeechRecognitionOutput;
-
-            messagePayload.data = chunks;
-            messagePayload.message = `Processed file ${filePath}`;
-            messagePayload.success = true;
-
-            return parentPort?.postMessage(messagePayload);
-        }
+        } 
         else {
             messagePayload.message = "Invalid file type";
             messagePayload.data = [];
