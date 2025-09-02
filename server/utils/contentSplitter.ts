@@ -10,8 +10,8 @@ async function getSplitter() {
     if (splitter) return splitter;
 
     splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1000,
-        chunkOverlap: 200,
+        chunkSize: 200,
+        chunkOverlap: 50,
         separators: ["\n\n", "\n", " ", ""]
     });
 

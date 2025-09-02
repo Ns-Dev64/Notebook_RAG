@@ -4,7 +4,7 @@ export interface MessageDto{
 
     message:string,
     success:boolean,
-    data: [] | AutomaticSpeechRecognitionOutput;
+    data: [] | AutomaticSpeechRecognitionOutput | Buffer<ArrayBuffer>;
 
 }
 

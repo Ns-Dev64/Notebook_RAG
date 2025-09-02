@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import MultiMediaProcessor from "../workers/master.ts";
+import fs from "fs/promises"
 
 const app = express();
 
@@ -27,7 +28,7 @@ app.post("/api/v1/processor",async(req ,res)=>{
 
         const workerId =  processor.createWorker();
 
-        const result = await processor.processMedia(workerId, filepath, type);
+        const result = await processor.processMedia(workerId, type, filepath);
 
         if(!result.success){
             throw new Error(result.message);
@@ -45,7 +46,36 @@ app.post("/api/v1/processor",async(req ,res)=>{
 
 })
 
+app.post("/api/v1/tts", async (req, res) => {
 
+    const content =req.body.content as string;
+
+    try {
+
+        const processor = new MultiMediaProcessor();
+
+        const workerId =  processor.createWorker();
+
+        const buffer = await processor.processMedia(workerId,"podcast",'',content);
+
+       const bufferData = buffer.data as Buffer;
+
+        return res.send({
+            audio: Array.from(bufferData)
+        });
+
+    }
+    catch (err) {
+
+        console.log(err);
+
+        res.status(500);
+        res.send(err);
+
+    }
+
+
+})
 
 
 app.listen(5000,()=>{

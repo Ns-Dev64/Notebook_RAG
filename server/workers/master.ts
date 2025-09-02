@@ -92,7 +92,7 @@ class MultiMediaProcessor{
 
     }
 
-    async processMedia(workerId:string,filepath:string, type:string){
+    async processMedia(workerId:string,type:string,filePath?:string , content?:string){
         
         return new Promise<MessageDto>((res,rej)=>{
 
@@ -104,21 +104,24 @@ class MultiMediaProcessor{
             }
             
 
-            const payload = {
-                filePath:filepath,
-                type
-            };
+            let payload:any={};
+
+            if(filePath) payload.filePath = filePath;
+            payload.type = type;
+            if(content) payload.content = content;
+
             
             worker.postMessage(payload);
             
             worker.on("message",(event:MessageDto)=>{
 
-
+                this.terminateWorker(workerId);
                 return res(event);
             })
 
             worker.on("error",(event)=>{
 
+                this.terminateWorker(workerId);
                 return rej(event)
             })
 
