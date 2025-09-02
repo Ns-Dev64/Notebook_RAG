@@ -141,7 +141,7 @@ export const createPodcast = async({body,user,set}:{
 
     let preQuery = `Generate a podcast-style narration in a natural, conversational tone. Write it as continuous spoken content, not as a script with stage directions. The narration should be professional yet engaging, suitable for direct use in text-to-speech to produce an audio podcast. Return the response strictly as a single string, for example:
 
-"Welcome back to the podcast. Today I want to share...". You are giving a podcast to a single person so make sure its inclined towards one individual`
+        "Welcome to the podcast ....". You are giving a podcast to a single person so make sure its inclined towards one individual`
 
     const finalQuery = `${preQuery}\n${constructQuery}`;
     
