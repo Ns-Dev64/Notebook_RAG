@@ -9,4 +9,4 @@ fileRouter
     .post("/", uploader, uploaderSchema)
     .post("/multimedia", multiMediaUploader, multiMediaSchema)
 
-export default fileRouter
+export default fileRouter;

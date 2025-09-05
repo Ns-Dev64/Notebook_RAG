@@ -3,6 +3,8 @@ import { getPineconeClient, getMongoClient } from './db/init';
 import userRouter from './routes/userRoutes';
 import fileRouter from "./routes/fileRouter";
 import aiRouter from './routes/aiRouter';
+import { loggerPlugin } from './middleware/logger';
+import { cors } from '@elysiajs/cors'
 
 Bun.env.NODE_ENV = Bun.env.ENV_TYPE || "DEV";
 
@@ -10,7 +12,8 @@ const port = parseInt(Bun.env.PORT || '5001')
 
 const app = new Elysia({prefix:"/api/v1"});
 
-
+app.use(cors());
+app.use(loggerPlugin);
 app.use(userRouter);
 app.use(fileRouter);
 app.use(aiRouter);
