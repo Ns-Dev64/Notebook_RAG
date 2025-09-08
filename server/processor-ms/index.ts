@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import MultiMediaProcessor from "../workers/master.ts";
 import fs from "fs/promises"
+import type { PrcoessorDto } from "../workers/workerDto.ts";
 
 const app = express();
 
@@ -28,7 +29,13 @@ app.post("/api/v1/processor",async(req ,res)=>{
 
         const workerId =  processor.createWorker();
 
-        const result = await processor.processMedia(workerId, type, filepath);
+        const processorPayload: PrcoessorDto = {
+            workerId,
+            type,
+            filePath:filepath
+        }
+
+        const result = await processor.processMedia(processorPayload);
 
         if(!result.success){
             throw new Error(result.message);
@@ -56,7 +63,13 @@ app.post("/api/v1/tts", async (req, res) => {
 
         const workerId =  processor.createWorker();
 
-        const buffer = await processor.processMedia(workerId,"podcast",'',content);
+        const processorPayload: PrcoessorDto = {
+            workerId,
+            type: "podcast",
+            content
+        }
+
+        const buffer = await processor.processMedia(processorPayload);
 
        const bufferData = buffer.data as Buffer;
 

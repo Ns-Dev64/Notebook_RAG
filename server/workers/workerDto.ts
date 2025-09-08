@@ -9,3 +9,12 @@ export interface MessageDto{
 }
 
 
+export interface PrcoessorDto{
+
+    workerId:string,
+    type: "podcast" | "video" | "default",
+    filePath?:string , 
+    content?:string,
+    processor?:Function
+
+}

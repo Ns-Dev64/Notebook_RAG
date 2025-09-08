@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { FileText, MessageSquare, Mic, Upload, Brain, Sparkles, ArrowRight, Play } from "lucide-react"
+import { FileText, MessageSquare, Mic, Upload, Brain, Sparkles, ArrowRight } from "lucide-react"
 
 export default function HomePage() {
   const { user, isLoading } = useAuth()
@@ -44,11 +45,9 @@ export default function HomePage() {
               <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">
                 Features
               </a>
-              <a href="#demo" className="text-muted-foreground hover:text-foreground transition-colors">
-                Demo
-              </a>
             </div>
             <div className="flex items-center space-x-4">
+              <ThemeToggle />
               <Button onClick={() => router.push("/login")} variant="ghost">
                 Sign In
               </Button>
@@ -70,10 +69,7 @@ export default function HomePage() {
             </Badge>
             <h1 className="text-5xl md:text-7xl font-serif font-bold text-foreground mb-6 text-balance leading-tight">
               Revolutionize Your
-              <span className="text-transparent bg-gradient-to-r from-primary to-accent bg-clip-text">
-                {" "}
-                Note-Taking
-              </span>
+              <span className="text-primary"> Note-Taking</span>
               <br />
               with AI
             </h1>
@@ -89,10 +85,6 @@ export default function HomePage() {
               >
                 Start Your Journey
                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </Button>
-              <Button variant="outline" size="lg" className="text-lg px-8 py-6 group bg-transparent">
-                <Play className="mr-2 h-5 w-5 group-hover:scale-110 transition-transform duration-300" />
-                Watch Demo
               </Button>
             </div>
           </div>
@@ -152,39 +144,6 @@ export default function HomePage() {
                 </CardHeader>
               </Card>
             ))}
-          </div>
-        </div>
-      </section>
-
-      <section id="demo" className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-4xl md:text-5xl font-serif font-bold text-foreground mb-8">See NoteMind in Action</h2>
-            <div className="bg-card border border-border rounded-2xl p-8 shadow-2xl">
-              <div className="bg-muted rounded-lg p-6 mb-6">
-                <div className="flex items-center space-x-3 mb-4">
-                  <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span className="text-sm text-muted-foreground ml-4">NoteMind Chat</span>
-                </div>
-                <div className="space-y-4">
-                  <div className="bg-primary/20 border border-primary/30 rounded-lg p-4 text-left">
-                    <p className="text-sm text-muted-foreground mb-1">You</p>
-                    <p className="text-foreground">Can you summarize my uploaded research paper about AI ethics?</p>
-                  </div>
-                  <div className="bg-accent/20 border border-accent/30 rounded-lg p-4 text-left">
-                    <p className="text-sm text-muted-foreground mb-1">NoteMind AI</p>
-                    <p className="text-foreground">
-                      I've analyzed your 47-page research paper. Here are the key findings: The paper explores three
-                      main ethical frameworks for AI development, emphasizes the importance of transparency in
-                      algorithmic decision-making, and proposes a new governance model for AI deployment in
-                      healthcare...
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </section>

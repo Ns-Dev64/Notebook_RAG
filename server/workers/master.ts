@@ -1,31 +1,32 @@
 // DO NOT RUN THIS WORKER USING BUN 
 
-import type{ MessageDto } from "./workerDto.ts";
+import type { MessageDto } from "./workerDto.ts";
 import { Worker } from "node:worker_threads";
+import type { PrcoessorDto } from "./workerDto.ts";
 
-type multiMediaConfig ={
-    timeOutinMins:number,
-    maxWorkers:number,
+type multiMediaConfig = {
+    timeOutinMins: number,
+    maxWorkers: number,
 }
 
-class MultiMediaProcessor{
+class MultiMediaProcessor {
 
-    private timeOutinMins:number;
-    private maxWorkers:number;
-    private workerMap:Map<string,Worker> = new Map();
+    private timeOutinMins: number;
+    private maxWorkers: number;
+    private workerMap: Map<string, Worker> = new Map();
 
 
 
-    constructor(config?:multiMediaConfig){
+    constructor(config?: multiMediaConfig) {
 
         this.timeOutinMins = config?.timeOutinMins || 5;
         this.maxWorkers = config?.maxWorkers || 5;
 
     }
 
-    isFull(){
+    isFull() {
 
-        if(this.workerMap.size >= this.maxWorkers) {
+        if (this.workerMap.size >= this.maxWorkers) {
             return true;
         }
 
@@ -33,9 +34,9 @@ class MultiMediaProcessor{
 
     }
 
-    isEmpty(){
+    isEmpty() {
 
-        if(this.workerMap.size === 0){
+        if (this.workerMap.size === 0) {
             return true;
         }
 
@@ -45,46 +46,48 @@ class MultiMediaProcessor{
 
     createWorker() {
 
-        if(this.isFull())  throw new Error("Worker pool exhausted!");
-    
+        if (this.isFull()) throw new Error("Worker pool exhausted!");
+
         const worker = new Worker(new URL('./multiMediaWorker.ts', import.meta.url));
 
 
         const workerId = `${Date.now()}_${worker.threadId}`;
 
-        this.workerMap.set(workerId,worker);
+        this.workerMap.set(workerId, worker);
 
         return workerId;
 
     }
 
-    timeoutExhaustedWorker(workerId:string){
+    timeoutExhaustedWorker(workerId: string) {
 
-        setTimeout(()=>{
+        setTimeout(() => {
             this.terminateWorker(workerId);
 
-        },this.timeOutinMins * 60 * 1000);
+        }, this.timeOutinMins * 60 * 1000);
+
+        console.log(`Worker exhausted`, workerId);
 
     };
 
-    terminateWorker(workerId:string){
+    terminateWorker(workerId: string) {
 
         const worker = this.workerMap.get(workerId);
 
-        if(worker){
+        if (worker) {
             worker.terminate();
-            console.log(`Worker terminated`,workerId);
+            console.log(`Worker terminated`, workerId);
         }
 
     };
 
-    terminateAllWorkers(){
-        
-        if(!this.isEmpty()){
+    terminateAllWorkers() {
+
+        if (!this.isEmpty()) {
 
             const workers = this.workerMap.values();
 
-            workers.forEach((worker)=> worker.terminate());
+            workers.forEach((worker) => worker.terminate());
 
             console.log("All workers terminated");
 
@@ -92,34 +95,37 @@ class MultiMediaProcessor{
 
     }
 
-    async processMedia(workerId:string,type:string,filePath?:string , content?:string){
-        
-        return new Promise<MessageDto>((res,rej)=>{
+    async processMedia(processorDto: PrcoessorDto) {
+
+        const { workerId, filePath, processor, content, type } = processorDto;
+
+        return new Promise<MessageDto>((res, rej) => {
 
             const worker = this.workerMap.get(workerId);
 
-            
-            if(!worker) {
+
+            if (!worker) {
                 return rej("Invalid worker Id");
             }
-            
 
-            let payload:any={};
 
-            if(filePath) payload.filePath = filePath;
+            let payload: any = {};
+
+            if (filePath) payload.filePath = filePath;
             payload.type = type;
-            if(content) payload.content = content;
+            if (processor) payload.processor = processor;
+            if (content) payload.content = content;
 
-            
+
             worker.postMessage(payload);
-            
-            worker.on("message",(event:MessageDto)=>{
+
+            worker.on("message", (event: MessageDto) => {
 
                 this.terminateWorker(workerId);
                 return res(event);
             })
 
-            worker.on("error",(event)=>{
+            worker.on("error", (event) => {
 
                 this.terminateWorker(workerId);
                 return rej(event)

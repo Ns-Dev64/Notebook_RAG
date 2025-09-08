@@ -1,33 +1,41 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { api } from "@/lib/api"
 import { ProtectedRoute } from "@/components/protected-route"
-import { FileUpload } from "@/components/file-upload"
-import { FileList } from "@/components/file-list"
+import { ProfileDialog } from "@/components/profile-dialog"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { MessageSquare, Mic, LogOut, User } from "lucide-react"
+import { MessageSquare, LogOut, Activity, Clock } from "lucide-react"
+
+interface Conversation {
+  _id: string
+  createdAt: string
+  messages: Array<{ role: string; content: string }>
+  updatedAt: string
+  userId: string
+}
 
 export default function DashboardPage() {
   const { user, logout } = useAuth()
   const router = useRouter()
-  const [files, setFiles] = useState<any[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
 
-  const handleFileUploaded = (newFile: any) => {
-    setFiles((prev) => [
-      {
-        id: newFile.id || Date.now().toString(),
-        name: newFile.name || "Unknown file",
-        type: newFile.type || "application/octet-stream",
-        size: newFile.size,
-        convoId: newFile.convoId,
-        uploadedAt: new Date().toISOString(),
-        ...newFile,
-      },
-      ...prev,
-    ])
+  useEffect(() => {
+    loadConversations()
+  }, [])
+
+  const loadConversations = async () => {
+    try {
+      const response = await api.getConversations()
+      setConversations(Array.isArray(response) ? response : [])
+    } catch (error) {
+      console.error("Failed to load conversations:", error)
+      setConversations([])
+    }
   }
 
   const handleLogout = () => {
@@ -47,10 +55,8 @@ export default function DashboardPage() {
                 <p className="text-sm text-muted-foreground">Welcome back, {user?.userName}</p>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm">
-                  <User className="h-4 w-4 mr-2" />
-                  Profile
-                </Button>
+                <ThemeToggle />
+                <ProfileDialog />
                 <Button variant="ghost" size="sm" onClick={handleLogout}>
                   <LogOut className="h-4 w-4 mr-2" />
                   Logout
@@ -62,57 +68,86 @@ export default function DashboardPage() {
 
         <div className="container mx-auto px-4 py-8">
           <div className="grid lg:grid-cols-3 gap-8">
-            {/* Main Content */}
-            <div className="lg:col-span-2 space-y-6">
-              <FileUpload onFileUploaded={handleFileUploaded} />
-              <FileList files={files} />
+            {/* Main Content - AI Chat */}
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5 text-primary" />
+                    AI Chat
+                  </CardTitle>
+                  <CardDescription>
+                    Chat with AI, upload files, and generate podcasts - all in one place
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8">
+                    <MessageSquare className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium mb-2">Start Your AI Conversation</h3>
+                    <p className="text-sm text-muted-foreground mb-6">
+                      Upload documents, ask questions, or generate podcasts with our AI assistant
+                    </p>
+                    <Button onClick={() => router.push("/chat")} size="lg">
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                      Open AI Chat
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Sidebar */}
+            {/* Sidebar - Activity */}
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Quick Actions</CardTitle>
-                  <CardDescription>Access AI features and tools</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start bg-transparent"
-                    onClick={() => router.push("/chat")}
-                  >
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    Start AI Chat
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start bg-transparent"
-                    onClick={() => router.push("/podcast")}
-                  >
-                    <Mic className="h-4 w-4 mr-2" />
-                    Generate Podcast
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Activity</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-primary" />
+                    Recent Activity
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {files.length > 0 ? (
-                    <div className="space-y-2">
-                      {files.slice(0, 3).map((file) => (
-                        <div key={file.id} className="text-sm">
-                          <p className="font-medium">{file.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Uploaded {new Date(file.uploadedAt).toLocaleDateString()}
-                          </p>
+                  {conversations.length > 0 ? (
+                    <div className="space-y-3">
+                      {conversations.slice(0, 5).map((convo) => (
+                        <div
+                          key={convo._id}
+                          className="p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
+                          onClick={() => router.push(`/chat?convo=${convo._id}`)}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {convo.messages.length > 0
+                                  ? convo.messages[0].content.slice(0, 40) +
+                                    (convo.messages[0].content.length > 40 ? "..." : "")
+                                  : `Chat ${convo._id.slice(0, 8)}`}
+                              </p>
+                              <div className="flex items-center gap-1 mt-1">
+                                <Clock className="h-3 w-3 text-muted-foreground" />
+                                <p className="text-xs text-muted-foreground">
+                                  {new Date(convo.updatedAt).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground ml-2">{convo.messages.length} msgs</div>
+                          </div>
                         </div>
                       ))}
+
+                      {conversations.length > 5 && (
+                        <Button variant="ghost" size="sm" className="w-full mt-3" onClick={() => router.push("/chat")}>
+                          View All Conversations
+                        </Button>
+                      )}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No recent activity</p>
+                    <div className="text-center py-6">
+                      <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">No recent activity</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Start a conversation to see your activity here
+                      </p>
+                    </div>
                   )}
                 </CardContent>
               </Card>

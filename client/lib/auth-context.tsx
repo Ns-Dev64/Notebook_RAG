@@ -6,6 +6,7 @@ interface User {
   id: string
   userName: string
   email: string
+  createdAt?: string // Added createdAt field for profile dialog
 }
 
 interface AuthContextType {

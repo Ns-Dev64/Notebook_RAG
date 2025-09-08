@@ -8,7 +8,6 @@ import { ObjectId } from "mongodb";
 import { cleanAIResponse } from "../utils/helper";
 import axios from "axios";
 import { deflateSync, inflateSync } from "bun";
-import fs from "fs/promises"
 
 const pineConeClient = await getPineconeClient();
 const mongoClient = (await getMongoClient()).collection("conversation");
@@ -97,7 +96,9 @@ export const chatWithAi = async ({ body, user, set }: {
                 }
             } as any,
 
-            updatedAt: new Date().toISOString(),
+            $set: {
+                updatedAt: new Date().toISOString()
+            }
         }
     );
 
@@ -153,6 +154,7 @@ export const createPodcast = async({body,user,set}:{
     const deflatedBuffer = deflateSync(new Uint8Array(buffer!));
 
     await podcastClient.insertOne({
+        userId:user.id,
         convoId,
         podcastBuffer : deflatedBuffer,
         createdAt: new Date().toISOString(),
@@ -161,10 +163,17 @@ export const createPodcast = async({body,user,set}:{
 
     const inflated = inflateSync(deflatedBuffer);
 
-    set.headers["Content-Type"] = "audio/wav";
-    set.headers["Content-Disposition"] = "attachment; filename=track.wav";
+    await Bun.write("./track.wav",inflated)
 
-    return new Response(inflated);
+    const file = new File([inflated], "track.wav", { type: "audio/wav" });
+
+
+return new Response(file, {
+    headers: {
+        "Content-Disposition": "inline; filename=track.wav", 
+        "Content-Type": "audio/wav", 
+    }
+});
 
 }
 

@@ -1,10 +1,14 @@
 import { KokoroTTS } from "kokoro-js";
-import { textsplitter } from "./contentSplitter.ts";
+import { textToTranscribe } from "./contentSplitter.ts";
 import { Writer } from "wav";
 
 let tts: KokoroTTS | null = null;
 
 const model_id = "onnx-community/Kokoro-82M-ONNX";
+
+export interface VoiceModel{
+    
+}
 
 async function getTts() {
     if (tts) return tts;
@@ -19,7 +23,7 @@ async function getTts() {
 
 export async function textToSpeech(content: string) {
     const tts = await getTts();
-    const chunks = await textsplitter(content);
+    const chunks = await textToTranscribe(content);
     let chunky = 0;
 
     const sampleRate = 22050; 

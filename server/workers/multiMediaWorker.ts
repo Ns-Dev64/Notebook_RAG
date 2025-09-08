@@ -18,9 +18,7 @@ async function convertTextToSpeech(content:string) {
 
 parentPort.on("message", async (event) => {  
 
-    const { filePath, type, content } = event;
-
-    console.log(event);
+    const { filePath, type, content, processor } = event;
 
     let messagePayload: MessageDto = {
         message: "",
@@ -59,6 +57,18 @@ parentPort.on("message", async (event) => {
 
             return parentPort?.postMessage(messagePayload);
 
+        }
+
+        else if(type === "default" && processor){
+
+            const data = await processor();
+
+            messagePayload.data = data;
+            messagePayload.message = 'Processed successfully';
+            messagePayload.success = true;
+
+            return parentPort?.postMessage(messagePayload);
+            
         }
 
         else {

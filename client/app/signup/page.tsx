@@ -32,14 +32,13 @@ export default function SignupPage() {
     try {
       const response = await api.signup(formData)
 
-      if (response.success && response.data) {
-        // Assuming the API returns { token, user } on successful signup
-        login(response.data.token, response.data.user)
+      if (response.success && response.user) {
         toast({
           title: "Account created successfully!",
-          description: "Welcome to NoteMind.",
+          description: response.message || "Welcome to NoteMind.",
         })
-        router.push("/dashboard")
+        // Redirect to login since signup doesn't return token
+        router.push("/login")
       } else {
         toast({
           title: "Signup failed",

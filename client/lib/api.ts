@@ -4,6 +4,10 @@ interface ApiResponse<T = any> {
   data?: T
   error?: string
   success: boolean
+  message?: string
+  user?: any
+  token?: string
+  convoId?: string
 }
 
 class ApiClient {
@@ -17,10 +21,13 @@ class ApiClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
     const token = this.getToken()
 
+    // Don't set Content-Type for FormData requests
+    const isFormData = options.body instanceof FormData
+    
     const config: RequestInit = {
       ...options,
       headers: {
-        "Content-Type": "application/json",
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...(token && { Authorization: `Bearer ${token}` }),
         ...options.headers,
       },
@@ -28,6 +35,23 @@ class ApiClient {
 
     try {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, config)
+
+      if (endpoint === "/ai/audio-podcast") {
+        if (!response.ok) {
+          const errorData = await response.json()
+          return {
+            success: false,
+            error: errorData.message || "An error occurred",
+          }
+        }
+        const blob = await response.blob()
+        const audioUrl = URL.createObjectURL(blob)
+        return {
+          success: true,
+          data: audioUrl as T,
+        }
+      }
+
       const data = await response.json()
 
       if (!response.ok) {
@@ -37,9 +61,16 @@ class ApiClient {
         }
       }
 
+      if(endpoint==="/user/convo"){
+        return {
+          success:true,
+          data
+        }
+      }
+
       return {
         success: true,
-        data,
+        ...data, 
       }
     } catch (error) {
       return {
@@ -101,6 +132,30 @@ class ApiClient {
     return this.request("/ai/audio-podcast", {
       method: "POST",
       body: JSON.stringify({ chat, convoId }),
+    })
+  }
+
+  async getConversations() {
+    return this.request("/user/convo", {
+      method: "GET",
+    })
+  }
+
+  async getConversationPodcasts(convoId: string) {
+    return this.request(`/user/convo/podcast/${convoId}`, {
+      method: "GET",
+    })
+  }
+
+  async deleteConversation(convoId: string) {
+    return this.request(`/user/convo/${convoId}`, {
+      method: "DELETE",
+    })
+  }
+
+  async getUserStatus() {
+    return this.request("/user/status", {
+      method: "GET",
     })
   }
 }

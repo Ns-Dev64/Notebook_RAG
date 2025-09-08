@@ -1,7 +1,7 @@
 import { split, textsplitter } from "../utils/contentSplitter";
 import { embedder } from "../utils/embedder";
 import { t } from "elysia";
-import { getPineconeClient } from "../db/init";
+import { getMongoClient, getPineconeClient } from "../db/init";
 import { findOrUpsertConversation } from "../db/operations";
 import { mkdir, unlink } from "fs/promises"
 import type { User } from "./userHandler";
@@ -12,6 +12,7 @@ import path from "path";
 import type { AutomaticSpeechRecognitionOutput } from "@huggingface/transformers";
 
 const pineConeClient = await getPineconeClient();
+let convoClient = (await getMongoClient()).collection("conversation");
 
 export const uploaderSchema = {
     body: t.Object({
@@ -99,7 +100,28 @@ export const uploader = async ({ body, user }: {
 
     let convo = await findOrUpsertConversation(convoId, user);
 
-    let namespaceKey = `${user.id}-${convo?._id}`
+    let namespaceKey = `${user.id}-${convo?._id}`;
+    let message ={
+        role:"user",
+        content:`Uploaded ${file.name}`,
+    };
+
+    await Promise.all([
+        pineConeClient.namespace(namespaceKey).upsert(vectors),
+        convoClient.updateOne({
+            _id: convo?._id
+        },
+            {
+                $push: {
+                    messages: message
+                } as any,
+                $set: {
+                    updatedAt: new Date().toISOString()
+                }
+            }
+        )
+    ])
+
 
     await pineConeClient.namespace(namespaceKey).upsert(vectors);
 
@@ -238,12 +260,31 @@ export const multiMediaUploader = async ({ body, user }: {
 
     let convo = await findOrUpsertConversation(convoId, user);
 
-    let namespaceKey = `${user.id}-${convo?._id}`
+    let namespaceKey = `${user.id}-${convo?._id}`;
 
-    await pineConeClient.namespace(namespaceKey).upsert(vectors);
+    let message ={
+        role:"user",
+        content:`Uploaded ${file.name}`,
+    };
+
+    await Promise.all([
+        pineConeClient.namespace(namespaceKey).upsert(vectors),
+        convoClient.updateOne({
+            _id: convo?._id
+        },
+            {
+                $push: {
+                    messages: message
+                } as any,
+                $set: {
+                    updatedAt: new Date().toISOString()
+                }
+            }
+        )
+    ])
 
     return {
-        message: "Document parsed sucessfully",
+        message: "Multimedia parsed sucessfully",
         sucess: true,
         convoId: convo?._id
     }

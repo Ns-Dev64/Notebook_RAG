@@ -29,16 +29,17 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const response = await api.login(formData)
+      const response = await api.login(formData);
 
-      if (response.success && response.data) {
-        // Assuming the API returns { token, user } on successful login
-        login(response.data.token, response.data.user)
+      
+
+      if (response.success && response.user && response.token) {
+        login(response.token, response.user)
         toast({
           title: "Welcome back!",
-          description: "You have been signed in successfully.",
+          description: response.message || "You have been signed in successfully.",
         })
-        router.push("/dashboard")
+        router.push("/chat")
       } else {
         toast({
           title: "Login failed",

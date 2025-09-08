@@ -10,8 +10,8 @@ async function getSplitter() {
     if (splitter) return splitter;
 
     splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 200,
-        chunkOverlap: 50,
+        chunkSize: 1000,
+        chunkOverlap: 250,
         separators: ["\n\n", "\n", " ", ""]
     });
 
@@ -50,5 +50,18 @@ export async function textsplitter(text:string) {
     const splitter=await getSplitter();
 
     return await splitter.splitText(text);
+    
+}
+
+export async function textToTranscribe(text:string) {
+
+   const splitter = new RecursiveCharacterTextSplitter({
+  chunkSize: 250,
+  chunkOverlap: 25, // 
+  separators: ["\n\n", "\n", ".", " ", ""],
+});
+
+    return  await splitter.splitText(text);
+
     
 }
