@@ -102,6 +102,7 @@ export default function ChatPage() {
   const [audioVolume, setAudioVolume] = useState<{ [key: string]: number }>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({})
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const checkAuthStatus = async () => {
@@ -168,6 +169,7 @@ export default function ChatPage() {
 
     try {
       const conversation = conversations.find((c) => c._id === convoId)
+      console.log("[v0] Selected conversation:", conversation)
 
       if (conversation && conversation.messages && conversation.messages.length > 0) {
         const uiMessages: UIMessage[] = conversation.messages.map((msg, index) => {
@@ -185,11 +187,14 @@ export default function ChatPage() {
               : undefined,
           } as UIMessage
 
+          console.log("[v0] Mapped message:", uiMessage)
           return uiMessage
         })
 
+        console.log("[v0] Setting messages:", uiMessages)
         setMessages(uiMessages)
       } else {
+        console.log("[v0] No messages found for conversation")
         setMessages([])
       }
 
@@ -238,63 +243,70 @@ export default function ChatPage() {
     }
   }
 
+  // Separate file upload handler
+  const handleFileUpload = async (file: File) => {
+    if (!file) return
+
+    setShowUploadDialog(true)
+    setUploadProgress(`Uploading ${file.name}...`)
+    setIsUploadLoading(true)
+
+    try {
+      const isMultimedia = file.type.startsWith("video/") || file.type.startsWith("audio/")
+      const response = isMultimedia
+        ? await api.uploadMultimedia(file, currentConvoId)
+        : await api.uploadFile(file, currentConvoId)
+
+      if (response.success) {
+        if (response.convoId && !currentConvoId) {
+          setCurrentConvoId(response.convoId)
+        }
+
+        const fileMessage: UIMessage = {
+          id: Date.now().toString(),
+          content: `Uploaded ${file.name}`,
+          role: "user",
+          timestamp: new Date(),
+          type: "file",
+          fileInfo: {
+            name: file.name,
+            type: file.type,
+          },
+        }
+
+        setMessages((prev) => [...prev, fileMessage])
+
+        toast({
+          title: "File uploaded successfully",
+          description: response.message || "Your file has been processed.",
+        })
+
+        loadConversations()
+      } else {
+        toast({
+          title: "Upload failed",
+          description: response.error || "Please try again.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Upload Error",
+        description: "Something went wrong during upload. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUploadLoading(false)
+      setShowUploadDialog(false)
+      setUploadProgress("")
+    }
+  }
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: async (acceptedFiles) => {
       const file = acceptedFiles[0]
-      if (!file) return
-
-      setShowUploadDialog(true)
-      setUploadProgress(`Uploading ${file.name}...`)
-      setIsUploadLoading(true)
-
-      try {
-        const isMultimedia = file.type.startsWith("video/") || file.type.startsWith("audio/")
-        const response = isMultimedia
-          ? await api.uploadMultimedia(file, currentConvoId)
-          : await api.uploadFile(file, currentConvoId)
-
-        if (response.sucess) {
-          if (response.convoId && !currentConvoId) {
-            setCurrentConvoId(response.convoId)
-          }
-
-          const fileMessage: UIMessage = {
-            id: Date.now().toString(),
-            content: `Uploaded ${file.name}`,
-            role: "user",
-            timestamp: new Date(),
-            type: "file",
-            fileInfo: {
-              name: file.name,
-              type: file.type,
-            },
-          }
-
-          setMessages((prev) => [...prev, fileMessage])
-
-          toast({
-            title: "File uploaded successfully",
-            description: response.message || "Your file has been processed.",
-          })
-
-          loadConversations()
-        } else {
-          toast({
-            title: "Upload failed",
-            description: response.error || "Please try again.",
-            variant: "destructive",
-          })
-        }
-      } catch (error) {
-        toast({
-          title: "Upload Error",
-          description: "Something went wrong during upload. Please try again.",
-          variant: "destructive",
-        })
-      } finally {
-        setIsUploadLoading(false)
-        setShowUploadDialog(false)
-        setUploadProgress("")
+      if (file) {
+        await handleFileUpload(file)
       }
     },
     accept: {
@@ -499,6 +511,16 @@ export default function ChatPage() {
     scrollToBottom()
   }, [messages])
 
+  // Handle file input change
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      handleFileUpload(file)
+    }
+    // Reset the input value so the same file can be selected again
+    event.target.value = ""
+  }
+
   return (
     <ProtectedRoute>
       <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
@@ -514,13 +536,21 @@ export default function ChatPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.docx,.pptx,.mp4,.avi,.mov,.mp3,.wav,.m4a,video/*,audio/*"
+        onChange={handleFileInputChange}
+        style={{ display: "none" }}
+      />
+
       <div className="min-h-screen bg-background flex">
-        <div className="w-80 border-r bg-card flex flex-col h-screen">
+        <div className="w-80 border-r bg-background flex flex-col h-screen">
           <div className="p-4 border-b flex-shrink-0">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold">NoteMind</h2>
               <div className="flex items-center gap-2">
-                <ThemeToggle />
                 <ProfileDialog />
                 <Button variant="ghost" size="sm" onClick={logout}>
                   Logout
@@ -774,102 +804,80 @@ export default function ChatPage() {
               </div>
             )}
 
-            {isDragActive && (
+                        {isDragActive && (
               <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary rounded-lg flex items-center justify-center z-10 animate-in fade-in duration-200">
                 <div className="text-center">
                   <Upload className="h-12 w-12 text-primary mx-auto mb-2" />
-                  <p className="text-lg font-medium text-primary">Drop files here to upload</p>
-                  <p className="text-sm text-muted-foreground">PDF, DOCX, PPTX, Video, Audio</p>
+                  <p className="text-sm font-medium text-primary">Drop your file here</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    PDF, DOCX, PPTX, Video, Audio
+                  </p>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="border-t bg-card p-4 flex-shrink-0">
-            <div className="max-w-4xl mx-auto space-y-3">
-              {showPodcastInput && (
-                <Card className="animate-in slide-in-from-bottom-2 duration-300">
-                  <CardContent className="p-4">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Enter topic for podcast..."
-                        value={podcastTopic}
-                        onChange={(e) => setPodcastTopic(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleGeneratePodcast()}
-                        disabled={isPodcastLoading}
-                        className="transition-all duration-200 focus:scale-[1.02]"
-                      />
-                      <Button
-                        onClick={handleGeneratePodcast}
-                        disabled={isPodcastLoading || !podcastTopic.trim()}
-                        className="transition-all duration-200 hover:scale-105"
-                      >
-                        {isPodcastLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowPodcastInput(false)}
-                        className="transition-all duration-200"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+          <footer className="border-t bg-card p-4 flex-shrink-0">
+            <div className="flex items-center gap-2 max-w-4xl mx-auto">
+              <Input
+                placeholder="Type your message..."
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSendMessage()
+                  }
+                }}
+                className="flex-1"
+              />
+              <Button
+                onClick={handleSendMessage}
+                disabled={isLoading}
+                className="transition-all duration-200 hover:scale-105"
+              >
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadLoading}
+                className="transition-all duration-200 hover:scale-105"
+              >
+                <Upload className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setShowPodcastInput((prev) => !prev)}
+                className="transition-all duration-200 hover:scale-105"
+              >
+                <Mic className="h-4 w-4 mr-2" />
+                Podcast
+              </Button>
+            </div>
 
-              <div className="flex gap-2">
-                <div className="flex gap-1">
-                  <div {...getRootProps()}>
-                    <input {...getInputProps()} />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isUploadLoading}
-                      className="px-3 bg-transparent transition-all duration-200 hover:scale-105"
-                      title="Upload files (PDF, DOCX, PPTX, Video, Audio)"
-                    >
-                      {isUploadLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                      <span className="ml-1 hidden sm:inline">Upload</span>
-                    </Button>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowPodcastInput(!showPodcastInput)}
-                    title="Generate podcast"
-                    className="transition-all duration-200 hover:scale-105"
-                  >
-                    <Mic className="h-4 w-4" />
-                    <span className="ml-1 hidden sm:inline">Podcast</span>
-                  </Button>
-                </div>
-
-                <Textarea
-                  placeholder="Type your message..."
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSendMessage()
-                    }
-                  }}
-                  className="min-h-[40px] max-h-32 resize-none transition-all duration-200 focus:scale-[1.02]"
-                  disabled={isLoading}
+            {showPodcastInput && (
+              <div className="mt-3 flex items-center gap-2 max-w-4xl mx-auto">
+                <Input
+                  placeholder="Enter podcast topic..."
+                  value={podcastTopic}
+                  onChange={(e) => setPodcastTopic(e.target.value)}
+                  className="flex-1"
                 />
-
                 <Button
-                  onClick={handleSendMessage}
-                  disabled={isLoading || !inputMessage.trim()}
+                  onClick={handleGeneratePodcast}
+                  disabled={isPodcastLoading}
                   className="transition-all duration-200 hover:scale-105"
                 >
-                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {isPodcastLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Generate"
+                  )}
                 </Button>
               </div>
-            </div>
-          </div>
+            )}
+          </footer>
         </div>
       </div>
     </ProtectedRoute>
