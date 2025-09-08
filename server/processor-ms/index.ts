@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import MultiMediaProcessor from "../workers/master.ts";
-import fs from "fs/promises"
 import type { PrcoessorDto } from "../workers/workerDto.ts";
 
 const app = express();
@@ -10,7 +9,7 @@ app.use(cors({
     origin:["http://localhost:5001"]
 }))
 
-app.use(express.json())
+app.use(express.json());
 
 
 app.post("/api/v1/processor",async(req ,res)=>{

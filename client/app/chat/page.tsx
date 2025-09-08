@@ -168,7 +168,6 @@ export default function ChatPage() {
 
     try {
       const conversation = conversations.find((c) => c._id === convoId)
-      console.log("[v0] Selected conversation:", conversation)
 
       if (conversation && conversation.messages && conversation.messages.length > 0) {
         const uiMessages: UIMessage[] = conversation.messages.map((msg, index) => {
@@ -186,14 +185,11 @@ export default function ChatPage() {
               : undefined,
           } as UIMessage
 
-          console.log("[v0] Mapped message:", uiMessage)
           return uiMessage
         })
 
-        console.log("[v0] Setting messages:", uiMessages)
         setMessages(uiMessages)
       } else {
-        console.log("[v0] No messages found for conversation")
         setMessages([])
       }
 

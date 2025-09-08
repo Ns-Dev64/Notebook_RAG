@@ -163,8 +163,6 @@ export const createPodcast = async({body,user,set}:{
 
     const inflated = inflateSync(deflatedBuffer);
 
-    await Bun.write("./track.wav",inflated)
-
     const file = new File([inflated], "track.wav", { type: "audio/wav" });
 
 

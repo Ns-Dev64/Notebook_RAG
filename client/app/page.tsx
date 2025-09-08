@@ -160,7 +160,7 @@ export default function HomePage() {
               amplifies your productivity with cutting-edge AI. A hobby project exploring the future of note-taking.
             </p>
             <div className="border-t border-border/50 pt-8 text-muted-foreground">
-              <p>&copy; 2024 NoteMind. A passion project built with AI-powered innovation.</p>
+              <p>&copy; 2025 NoteMind. A passion project built with AI-powered innovation.</p>
             </div>
           </div>
         </div>
