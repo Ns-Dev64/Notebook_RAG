@@ -1,4 +1,4 @@
-import { split, textsplitter } from "../utils/contentSplitter";
+import { split, } from "../utils/contentSplitter";
 import { embedder } from "../utils/embedder";
 import { t } from "elysia";
 import { getMongoClient, getPineconeClient } from "../db/init";
@@ -10,9 +10,18 @@ import type { MessageDto } from "../workers/workerDto";
 import axios from "axios";
 import path from "path";
 import type { AutomaticSpeechRecognitionOutput } from "@huggingface/transformers";
+import { getObjectUrl,isResourceExisting } from "../utils/s3";
 
 const pineConeClient = await getPineconeClient();
 let convoClient = (await getMongoClient()).collection("conversation");
+let podcastClient = (await getMongoClient()).collection("podcast");
+
+export const presignedUrlSchema ={
+    body: t.Object({
+        convoId: t.String(),
+        url: t.String()
+    })
+}
 
 export const uploaderSchema = {
     body: t.Object({
@@ -143,7 +152,6 @@ export const multiMediaUploader = async ({ body, user }: {
     const tempDir = path.join(__dirname, '../processor-ms/temp/multimedia');
 
 
-    
     let isConvoValid = await findOrUpsertConversation(convoId, user);
     if (isConvoValid?.messages.length > 250) throw new Error("Conversation length exceeded");
     
@@ -289,5 +297,41 @@ export const multiMediaUploader = async ({ body, user }: {
         convoId: convo?._id
     }
 
+
+}
+
+export const generateNewPresignedUrl = async({ body, user}:{
+
+    body: typeof presignedUrlSchema.body,
+    user:User
+
+}) => {
+
+
+    const {convoId, url} = body
+
+    const podcast = await podcastClient.findOne({
+        convoId
+    });
+
+    if(!podcast) throw new Error("Invalid conversation");
+
+    if(podcast.url !== url) throw new Error("Invalid Url");
+
+    if(!await isResourceExisting(podcast.path)) throw new Error("Invalid resource");
+
+    const newObjectUrl = getObjectUrl(url);
+
+    await podcastClient.updateOne({
+        convoId
+    },{
+        url: newObjectUrl,
+        updatedAt: new Date().toISOString()
+    })
+
+    return {
+        url: newObjectUrl
+    }
+   
 
 }

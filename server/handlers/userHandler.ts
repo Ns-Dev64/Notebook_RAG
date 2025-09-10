@@ -2,8 +2,11 @@ import { t } from "elysia";
 import { getMongoClient } from "../db/init";
 import Jwt from "jsonwebtoken"
 import { ObjectId } from "mongodb";
+import { deletefromS3 } from "../utils/s3";
+import { getPineconeClient } from "../db/init";
 
-let mongoClient = (await getMongoClient()).collection("users");
+const pineConeClient = await getPineconeClient();
+let userClient = (await getMongoClient()).collection("users");
 let convoClient = (await getMongoClient()).collection("conversation");
 let podcastClient = (await getMongoClient()).collection("podcast");
 export interface User {
@@ -42,7 +45,7 @@ export const registerHandler = async ({ body }: {
     }
 
 
-    const user = await mongoClient.insertOne(userPayload);
+    const user = await userClient.insertOne(userPayload);
 
     if (!user) throw new Error("Error occured while creating user");
 
@@ -58,7 +61,7 @@ export const loginHandler = async ({ body }: {
 
     const { identifier, password } = body;
 
-    const user = await mongoClient.findOne({
+    const user = await userClient.findOne({
         $or: [
             { email: identifier },
             { userName: identifier }
@@ -112,8 +115,6 @@ export const getConvoPodcasts = async ({ params, user }: {
         convoId,
     }).toArray();
 
-
-
     return podcasts.length > 0 ? podcasts : [];
 
 }
@@ -146,13 +147,24 @@ export const deleteConversation = async ({ params, user }: {
 
     if (convo.userId !== user.id) throw new Error("Invalid user");
 
+    let key = `${user.id}-${convoId}`;
+
+    const docs = await podcastClient.find(
+        { convoId },
+        { projection: { path: 1, _id: 0 } }
+    ).toArray();
+
+    const paths:string[] = docs.map(doc => doc.path);
+
     await Promise.all([
         convoClient.deleteOne({
             _id: new ObjectId(convoId)
         }),
         podcastClient.deleteMany({
             convoId
-        })
+        }),
+        deletefromS3(paths),
+        pineConeClient.deleteNamespace(key)
     ]);
 
 

@@ -56,8 +56,8 @@ export async function textsplitter(text:string) {
 export async function textToTranscribe(text:string) {
 
    const splitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 250,
-  chunkOverlap: 25, // 
+  chunkSize: 350,
+  chunkOverlap: 40,  
   separators: ["\n\n", "\n", ".", " ", ""],
 });
 

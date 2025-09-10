@@ -7,7 +7,7 @@ import type { User } from "./userHandler";
 import { ObjectId } from "mongodb";
 import { cleanAIResponse } from "../utils/helper";
 import axios from "axios";
-import { deflateSync, inflateSync } from "bun";
+import { uploadToS3 } from "../utils/s3";
 
 const pineConeClient = await getPineconeClient();
 const mongoClient = (await getMongoClient()).collection("conversation");
@@ -151,27 +151,23 @@ export const createPodcast = async({body,user,set}:{
 
     const buffer = await tts(response as string);
 
-    const deflatedBuffer = deflateSync(new Uint8Array(buffer!));
+    const {presignedUrl,path} = await uploadToS3(buffer!,user.id);
 
     await podcastClient.insertOne({
         userId:user.id,
         convoId,
-        podcastBuffer : deflatedBuffer,
+        url: presignedUrl,
+        path: path,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     });
 
-    const inflated = inflateSync(deflatedBuffer);
 
-    const file = new File([inflated], "track.wav", { type: "audio/wav" });
-
-
-return new Response(file, {
-    headers: {
-        "Content-Disposition": "inline; filename=track.wav", 
-        "Content-Type": "audio/wav", 
-    }
-});
+    return {
+        audioUrl: presignedUrl,
+        expiresIn: 7200,
+        path
+    };
 
 }
 

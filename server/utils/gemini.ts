@@ -6,6 +6,8 @@ import {
   HarmCategory,
 } from '@google/genai';
 
+import { chatInstruction } from './instructions';
+
 export async function aiChat(prompt:any) {
   const ai = new GoogleGenAI({
     apiKey: Bun.env.GEMINI_API_KEY,
@@ -34,23 +36,7 @@ export async function aiChat(prompt:any) {
     ],
     systemInstruction: [
         {
-          text: `You are a Retrieval-Augmented Generation (RAG) chatbot. 
-You receive three inputs: 
-1. Conversation history (optional, may be irrelevant). 
-2. The user's latest query. 
-3. Retrieved database results. 
-
-Rules:
-- Always prioritize database results when answering. 
-- Clearly explain "From the database, I found..." before reasoning. 
-- Ignore conversation history if it is unrelated to the current query. 
-- If database results don’t contain enough info, say so explicitly. 
-- Do not mix topics from unrelated past conversation.  
-
-Additional Rules:
-- If the user asks to do external research about something, you can go ahead and try making the response more fruitful.
-
-`,
+          text: chatInstruction,
         }
     ],
   };

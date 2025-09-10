@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
@@ -8,7 +10,6 @@ import { ProtectedRoute } from "@/components/protected-route"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ProfileDialog } from "@/components/profile-dialog"
@@ -73,10 +74,11 @@ interface UIMessage extends Message {
 interface Podcast {
   _id: string
   convoId: string
-  podcastBuffer: string
+  url: string,
+  path: string
   createdAt: string
   updatedAt: string
-  userId?: string
+  userId: string
 }
 
 export default function ChatPage() {
@@ -100,6 +102,8 @@ export default function ChatPage() {
   const [audioProgress, setAudioProgress] = useState<{ [key: string]: number }>({})
   const [audioDuration, setAudioDuration] = useState<{ [key: string]: number }>({})
   const [audioVolume, setAudioVolume] = useState<{ [key: string]: number }>({})
+  const [audioLoading, setAudioLoading] = useState<{ [key: string]: boolean }>({})
+  const [loadedAudioUrls, setLoadedAudioUrls] = useState<{ [key: string]: string }>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -145,6 +149,9 @@ export default function ChatPage() {
   const loadConversationPodcasts = async (convoId: string) => {
     try {
       const response = await api.getConversationPodcasts(convoId)
+
+      console.log(Object.keys(response))
+
       if (response.success && response.data) {
         setPodcasts(Array.isArray(response.data) ? response.data : [])
       } else {
@@ -420,40 +427,98 @@ export default function ChatPage() {
     }
   }
 
-  const setupAudioControls = (messageId: string, audioUrl: string) => {
+  const setupAudioControls = async (messageId: string, audioUrl: string) => {
     if (!audioRefs.current[messageId]) {
-      const audio = new Audio(audioUrl)
-      audioRefs.current[messageId] = audio
+      setAudioLoading((prev) => ({ ...prev, [messageId]: true }))
 
-      audio.onloadedmetadata = () => {
-        setAudioDuration((prev) => ({ ...prev, [messageId]: audio.duration }))
+      try {
+        const audio = new Audio(audioUrl)
+        audioRefs.current[messageId] = audio
+
+        // Wait for audio to load
+        await new Promise((resolve, reject) => {
+          audio.onloadedmetadata = () => {
+            setAudioDuration((prev) => ({ ...prev, [messageId]: audio.duration }))
+            resolve(true)
+          }
+          audio.onerror = reject
+        })
+
+        audio.ontimeupdate = () => {
+          setAudioProgress((prev) => ({ ...prev, [messageId]: audio.currentTime }))
+        }
+
+        audio.onended = () => {
+          setPlayingAudio(null)
+          setAudioProgress((prev) => ({ ...prev, [messageId]: 0 }))
+          cleanupAudio(messageId)
+        }
+
+        audio.volume = audioVolume[messageId] || 0.7
+        setAudioVolume((prev) => ({ ...prev, [messageId]: audio.volume }))
+        setLoadedAudioUrls((prev) => ({ ...prev, [messageId]: audioUrl }))
+
+        toast({
+          title: "Audio loaded",
+          description: "Your audio is ready to play.",
+        })
+      } catch (error) {
+        toast({
+          title: "Audio loading failed",
+          description: "Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setAudioLoading((prev) => ({ ...prev, [messageId]: false }))
       }
-
-      audio.ontimeupdate = () => {
-        setAudioProgress((prev) => ({ ...prev, [messageId]: audio.currentTime }))
-      }
-
-      audio.onended = () => {
-        setPlayingAudio(null)
-        setAudioProgress((prev) => ({ ...prev, [messageId]: 0 }))
-      }
-
-      audio.volume = audioVolume[messageId] || 0.7
-      setAudioVolume((prev) => ({ ...prev, [messageId]: audio.volume }))
     }
   }
 
-  const toggleAudio = (messageId: string, audioUrl: string) => {
-    setupAudioControls(messageId, audioUrl)
+  const cleanupAudio = (messageId: string) => {
+    if (audioRefs.current[messageId]) {
+      audioRefs.current[messageId].pause()
+      audioRefs.current[messageId].src = ""
+      delete audioRefs.current[messageId]
+      setLoadedAudioUrls((prev) => {
+        const newUrls = { ...prev }
+        delete newUrls[messageId]
+        return newUrls
+      })
+      setAudioDuration((prev) => {
+        const newDuration = { ...prev }
+        delete newDuration[messageId]
+        return newDuration
+      })
+      setAudioProgress((prev) => {
+        const newProgress = { ...prev }
+        delete newProgress[messageId]
+        return newProgress
+      })
+    }
+  }
 
+  const toggleAudio = async (messageId: string, audioUrl: string) => {
+    // If audio is currently playing, pause and clean up
     if (playingAudio === messageId) {
       audioRefs.current[messageId]?.pause()
       setPlayingAudio(null)
-    } else {
-      if (playingAudio) {
-        audioRefs.current[playingAudio]?.pause()
-      }
+      cleanupAudio(messageId)
+      return
+    }
 
+    // If another audio is playing, stop and clean it up
+    if (playingAudio) {
+      audioRefs.current[playingAudio]?.pause()
+      cleanupAudio(playingAudio)
+      setPlayingAudio(null)
+    }
+
+    // Load and play the new audio
+    if (!loadedAudioUrls[messageId]) {
+      await setupAudioControls(messageId, audioUrl)
+    }
+
+    if (audioRefs.current[messageId]) {
       audioRefs.current[messageId].play()
       setPlayingAudio(messageId)
     }
@@ -486,21 +551,6 @@ export default function ChatPage() {
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
-
-  const getPodcastAudioUrl = (podcast: Podcast) => {
-    try {
-      const binaryString = atob(podcast.podcastBuffer)
-      const bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i)
-      }
-      const blob = new Blob([bytes], { type: "audio/wav" })
-      return URL.createObjectURL(blob)
-    } catch (error) {
-      console.error("Error converting podcast buffer:", error)
-      return null
-    }
   }
 
   const scrollToBottom = () => {
@@ -626,7 +676,7 @@ export default function ChatPage() {
                 <h3 className="text-sm font-medium text-muted-foreground mb-3">Podcasts</h3>
                 <div className="space-y-2">
                   {podcasts.map((podcast) => {
-                    const audioUrl = getPodcastAudioUrl(podcast)
+                    const audioUrl = podcast.url
                     if (!audioUrl) return null
 
                     return (
@@ -638,13 +688,21 @@ export default function ChatPage() {
                               variant="outline"
                               onClick={() => toggleAudio(podcast._id, audioUrl)}
                               className="transition-all duration-200"
+                              disabled={audioLoading[podcast._id]}
                             >
-                              {playingAudio === podcast._id ? (
+                              {audioLoading[podcast._id] ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : playingAudio === podcast._id ? (
                                 <Pause className="h-3 w-3" />
                               ) : (
                                 <Play className="h-3 w-3" />
                               )}
                             </Button>
+                            {audioLoading[podcast._id] && (
+                              <span className="text-xs text-muted-foreground">
+                                Please wait while we load your audio...
+                              </span>
+                            )}
                             <span className="text-xs text-muted-foreground">
                               {new Date(podcast.createdAt).toLocaleDateString()}
                             </span>
@@ -741,32 +799,43 @@ export default function ChatPage() {
                               size="sm"
                               variant={message.role === "user" ? "secondary" : "default"}
                               onClick={() => toggleAudio(message.id, message.audioUrl!)}
+                              disabled={audioLoading[message.id]}
                             >
-                              {playingAudio === message.id ? (
+                              {audioLoading[message.id] ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : playingAudio === message.id ? (
                                 <Pause className="h-4 w-4" />
                               ) : (
                                 <Play className="h-4 w-4" />
                               )}
                             </Button>
 
-                            <Button size="sm" variant="outline" onClick={() => skipAudio(message.id, -10)}>
-                              <SkipBack className="h-3 w-3" />
-                            </Button>
+                            {audioLoading[message.id] ? (
+                              <span className="text-xs text-muted-foreground">
+                                Please wait while we load your audio...
+                              </span>
+                            ) : (
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => skipAudio(message.id, -10)}>
+                                  <SkipBack className="h-3 w-3" />
+                                </Button>
 
-                            <Button size="sm" variant="outline" onClick={() => skipAudio(message.id, 10)}>
-                              <SkipForward className="h-3 w-3" />
-                            </Button>
+                                <Button size="sm" variant="outline" onClick={() => skipAudio(message.id, 10)}>
+                                  <SkipForward className="h-3 w-3" />
+                                </Button>
 
-                            <a
-                              href={message.audioUrl}
-                              download="podcast.wav"
-                              className="text-sm hover:underline flex items-center gap-1"
-                            >
-                              <Download className="h-3 w-3" />
-                            </a>
+                                <a
+                                  href={message.audioUrl}
+                                  download="podcast.wav"
+                                  className="text-sm hover:underline flex items-center gap-1"
+                                >
+                                  <Download className="h-3 w-3" />
+                                </a>
+                              </>
+                            )}
                           </div>
 
-                          {audioDuration[message.id] && (
+                          {audioDuration[message.id] && !audioLoading[message.id] && (
                             <div className="space-y-2">
                               <Slider
                                 value={[audioProgress[message.id] || 0]}
@@ -782,16 +851,18 @@ export default function ChatPage() {
                             </div>
                           )}
 
-                          <div className="flex items-center gap-2 mt-2">
-                            <Volume2 className="h-3 w-3" />
-                            <Slider
-                              value={[audioVolume[message.id] || 0.7]}
-                              max={1}
-                              step={0.1}
-                              onValueChange={([value]) => setVolume(message.id, value)}
-                              className="w-20"
-                            />
-                          </div>
+                          {!audioLoading[message.id] && audioDuration[message.id] && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <Volume2 className="h-3 w-3" />
+                              <Slider
+                                value={[audioVolume[message.id] || 0.7]}
+                                max={1}
+                                step={0.1}
+                                onValueChange={([value]) => setVolume(message.id, value)}
+                                className="w-20"
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -804,14 +875,12 @@ export default function ChatPage() {
               </div>
             )}
 
-                        {isDragActive && (
+            {isDragActive && (
               <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary rounded-lg flex items-center justify-center z-10 animate-in fade-in duration-200">
                 <div className="text-center">
                   <Upload className="h-12 w-12 text-primary mx-auto mb-2" />
                   <p className="text-sm font-medium text-primary">Drop your file here</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    PDF, DOCX, PPTX, Video, Audio
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">PDF, DOCX, PPTX, Video, Audio</p>
                 </div>
               </div>
             )}
@@ -869,11 +938,7 @@ export default function ChatPage() {
                   disabled={isPodcastLoading}
                   className="transition-all duration-200 hover:scale-105"
                 >
-                  {isPodcastLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    "Generate"
-                  )}
+                  {isPodcastLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Generate"}
                 </Button>
               </div>
             )}

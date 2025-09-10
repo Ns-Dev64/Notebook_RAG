@@ -68,6 +68,14 @@ class ApiClient {
         }
       }
 
+      if(endpoint.startsWith("/user/convo/podcast/")){
+        return {
+          success:true,
+          data
+        }
+
+      }
+
       return {
         success: true,
         ...data, 
