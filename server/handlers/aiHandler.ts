@@ -165,7 +165,6 @@ export const createPodcast = async({body,user,set}:{
 
     return {
         audioUrl: presignedUrl,
-        expiresIn: 7200,
         path
     };
 

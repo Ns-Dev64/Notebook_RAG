@@ -74,7 +74,7 @@ interface UIMessage extends Message {
 interface Podcast {
   _id: string
   convoId: string
-  url: string,
+  url: string
   path: string
   createdAt: string
   updatedAt: string
@@ -385,14 +385,14 @@ export default function ChatPage() {
     try {
       const response = await api.generatePodcast(podcastTopic, currentConvoId)
 
-      if (response.success && response.data) {
+      if (response.success && response.audioUrl) {
         const podcastMessage: UIMessage = {
           id: Date.now().toString(),
           content: `Generated podcast: "${podcastTopic}"`,
           role: "assistant",
           timestamp: new Date(),
           type: "podcast",
-          audioUrl: response.data,
+          audioUrl: response.audioUrl,
         }
 
         setMessages((prev) => [...prev, podcastMessage])
@@ -497,7 +497,7 @@ export default function ChatPage() {
     }
   }
 
-  const toggleAudio = async (messageId: string, audioUrl: string) => {
+  const toggleAudio = async (messageId: string, audioUrl: string, podcast?: Podcast) => {
     // If audio is currently playing, pause and clean up
     if (playingAudio === messageId) {
       audioRefs.current[messageId]?.pause()
@@ -513,9 +513,15 @@ export default function ChatPage() {
       setPlayingAudio(null)
     }
 
+    // Check if URL needs refreshing for podcasts
+    let finalAudioUrl = audioUrl
+    if (podcast) {
+      finalAudioUrl = await checkAndRefreshPodcastUrl(podcast)
+    }
+
     // Load and play the new audio
     if (!loadedAudioUrls[messageId]) {
-      await setupAudioControls(messageId, audioUrl)
+      await setupAudioControls(messageId, finalAudioUrl)
     }
 
     if (audioRefs.current[messageId]) {
@@ -571,6 +577,26 @@ export default function ChatPage() {
     event.target.value = ""
   }
 
+  const checkAndRefreshPodcastUrl = async (podcast: Podcast): Promise<string> => {
+    const updatedAt = new Date(podcast.updatedAt)
+    const now = new Date()
+    const timeDiff = (now.getTime() - updatedAt.getTime()) / 1000 // Convert to seconds
+
+    // If more than 7200 seconds (2 hours) have passed, refresh the URL
+    if (timeDiff > 7200) {
+      try {
+        const response = await api.refreshPresignedUrl(podcast.convoId, podcast.url)
+        if (response.success && response.audioUrl) {
+          return response.audioUrl
+        }
+      } catch (error) {
+        console.error("Failed to refresh presigned URL:", error)
+      }
+    }
+
+    return podcast.url
+  }
+
   return (
     <ProtectedRoute>
       <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
@@ -607,7 +633,10 @@ export default function ChatPage() {
                 </Button>
               </div>
             </div>
-            <Button onClick={startNewConversation} className="w-full transition-all duration-200 hover:scale-105">
+            <Button
+              onClick={startNewConversation}
+              className="w-full transition-all duration-300 hover:scale-105 hover:shadow-lg animate-in slide-in-from-top duration-500"
+            >
               <Plus className="h-4 w-4 mr-2" />
               New Chat
             </Button>
@@ -622,11 +651,15 @@ export default function ChatPage() {
               </div>
             )}
             <div className="space-y-2">
-              {conversations.map((convo) => (
-                <div key={convo._id} className="group relative">
+              {conversations.map((convo, index) => (
+                <div
+                  key={convo._id}
+                  className="group relative animate-in slide-in-from-left duration-300"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
                   <Button
                     variant={currentConvoId === convo._id ? "secondary" : "ghost"}
-                    className="w-full justify-start text-left h-auto p-3 pr-10 transition-all duration-200 hover:scale-[1.02]"
+                    className="w-full justify-start text-left h-auto p-3 pr-10 transition-all duration-300 hover:scale-[1.02] hover:shadow-md"
                     onClick={() => selectConversation(convo._id)}
                   >
                     <div className="truncate">
@@ -647,7 +680,7 @@ export default function ChatPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-110 hover:bg-destructive hover:text-destructive-foreground"
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
@@ -680,14 +713,17 @@ export default function ChatPage() {
                     if (!audioUrl) return null
 
                     return (
-                      <Card key={podcast._id} className="transition-all duration-200 hover:shadow-md">
+                      <Card
+                        key={podcast._id}
+                        className="transition-all duration-300 hover:shadow-lg hover:scale-[1.02] animate-in slide-in-from-left duration-500"
+                      >
                         <CardContent className="p-3">
                           <div className="flex items-center gap-2 mb-2">
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => toggleAudio(podcast._id, audioUrl)}
-                              className="transition-all duration-200"
+                              onClick={() => toggleAudio(podcast._id, audioUrl, podcast)}
+                              className="transition-all duration-200 hover:scale-110"
                               disabled={audioLoading[podcast._id]}
                             >
                               {audioLoading[podcast._id] ? (
@@ -699,7 +735,7 @@ export default function ChatPage() {
                               )}
                             </Button>
                             {audioLoading[podcast._id] && (
-                              <span className="text-xs text-muted-foreground">
+                              <span className="text-xs text-muted-foreground animate-pulse">
                                 Please wait while we load your audio...
                               </span>
                             )}
@@ -729,7 +765,7 @@ export default function ChatPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => router.push("/dashboard")}
-                  className="transition-all duration-200 hover:scale-105"
+                  className="transition-all duration-300 hover:scale-105 hover:shadow-lg animate-in slide-in-from-top duration-500"
                 >
                   <LayoutDashboard className="h-4 w-4 mr-2" />
                   Dashboard
@@ -758,7 +794,7 @@ export default function ChatPage() {
 
                   <div
                     {...getRootProps()}
-                    className="border-2 border-dashed rounded-lg p-8 border-muted-foreground/25 cursor-pointer transition-all duration-200 hover:border-primary/50 hover:bg-primary/5"
+                    className="border-2 border-dashed rounded-lg p-8 border-muted-foreground/25 cursor-pointer transition-all duration-300 hover:border-primary/50 hover:bg-primary/5"
                   >
                     <input {...getInputProps()} />
                     <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
@@ -769,13 +805,14 @@ export default function ChatPage() {
               </div>
             ) : (
               <div className="space-y-4 max-w-4xl mx-auto">
-                {messages.map((message) => (
+                {messages.map((message, index) => (
                   <div
                     key={message.id}
-                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2 duration-300`}
+                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-3 duration-500`}
+                    style={{ animationDelay: `${index * 100}ms` }}
                   >
                     <div
-                      className={`max-w-[70%] rounded-lg p-4 transition-all duration-200 hover:shadow-md ${
+                      className={`max-w-[70%] rounded-lg p-4 transition-all duration-300 hover:shadow-lg hover:scale-[1.02] ${
                         message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
                       }`}
                     >
@@ -800,6 +837,7 @@ export default function ChatPage() {
                               variant={message.role === "user" ? "secondary" : "default"}
                               onClick={() => toggleAudio(message.id, message.audioUrl!)}
                               disabled={audioLoading[message.id]}
+                              className="transition-all duration-200 hover:scale-110"
                             >
                               {audioLoading[message.id] ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -811,23 +849,33 @@ export default function ChatPage() {
                             </Button>
 
                             {audioLoading[message.id] ? (
-                              <span className="text-xs text-muted-foreground">
+                              <span className="text-xs text-muted-foreground animate-pulse">
                                 Please wait while we load your audio...
                               </span>
                             ) : (
                               <>
-                                <Button size="sm" variant="outline" onClick={() => skipAudio(message.id, -10)}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => skipAudio(message.id, -10)}
+                                  className="transition-all duration-200 hover:scale-110"
+                                >
                                   <SkipBack className="h-3 w-3" />
                                 </Button>
 
-                                <Button size="sm" variant="outline" onClick={() => skipAudio(message.id, 10)}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => skipAudio(message.id, 10)}
+                                  className="transition-all duration-200 hover:scale-110"
+                                >
                                   <SkipForward className="h-3 w-3" />
                                 </Button>
 
                                 <a
                                   href={message.audioUrl}
                                   download="podcast.wav"
-                                  className="text-sm hover:underline flex items-center gap-1"
+                                  className="text-sm hover:underline flex items-center gap-1 transition-all duration-200 hover:scale-110"
                                 >
                                   <Download className="h-3 w-3" />
                                 </a>
@@ -898,12 +946,12 @@ export default function ChatPage() {
                     handleSendMessage()
                   }
                 }}
-                className="flex-1"
+                className="flex-1 transition-all duration-200 focus:scale-[1.02]"
               />
               <Button
                 onClick={handleSendMessage}
                 disabled={isLoading}
-                className="transition-all duration-200 hover:scale-105"
+                className="transition-all duration-300 hover:scale-110 hover:shadow-lg"
               >
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
@@ -911,14 +959,14 @@ export default function ChatPage() {
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploadLoading}
-                className="transition-all duration-200 hover:scale-105"
+                className="transition-all duration-300 hover:scale-110 hover:shadow-lg"
               >
                 <Upload className="h-4 w-4" />
               </Button>
               <Button
                 variant="secondary"
                 onClick={() => setShowPodcastInput((prev) => !prev)}
-                className="transition-all duration-200 hover:scale-105"
+                className="transition-all duration-300 hover:scale-110 hover:shadow-lg"
               >
                 <Mic className="h-4 w-4 mr-2" />
                 Podcast
@@ -926,17 +974,17 @@ export default function ChatPage() {
             </div>
 
             {showPodcastInput && (
-              <div className="mt-3 flex items-center gap-2 max-w-4xl mx-auto">
+              <div className="mt-3 flex items-center gap-2 max-w-4xl mx-auto animate-in slide-in-from-bottom duration-300">
                 <Input
                   placeholder="Enter podcast topic..."
                   value={podcastTopic}
                   onChange={(e) => setPodcastTopic(e.target.value)}
-                  className="flex-1"
+                  className="flex-1 transition-all duration-200 focus:scale-[1.02]"
                 />
                 <Button
                   onClick={handleGeneratePodcast}
                   disabled={isPodcastLoading}
-                  className="transition-all duration-200 hover:scale-105"
+                  className="transition-all duration-300 hover:scale-110 hover:shadow-lg"
                 >
                   {isPodcastLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Generate"}
                 </Button>

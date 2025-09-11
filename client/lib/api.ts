@@ -23,7 +23,7 @@ class ApiClient {
 
     // Don't set Content-Type for FormData requests
     const isFormData = options.body instanceof FormData
-    
+
     const config: RequestInit = {
       ...options,
       headers: {
@@ -61,24 +61,23 @@ class ApiClient {
         }
       }
 
-      if(endpoint==="/user/convo"){
+      if (endpoint === "/user/convo") {
         return {
-          success:true,
-          data
+          success: true,
+          data,
         }
       }
 
-      if(endpoint.startsWith("/user/convo/podcast/")){
+      if (endpoint.startsWith("/user/convo/podcast/")) {
         return {
-          success:true,
-          data
+          success: true,
+          data,
         }
-
       }
 
       return {
         success: true,
-        ...data, 
+        ...data,
       }
     } catch (error) {
       return {
@@ -140,6 +139,13 @@ class ApiClient {
     return this.request("/ai/audio-podcast", {
       method: "POST",
       body: JSON.stringify({ chat, convoId }),
+    })
+  }
+
+  async refreshPresignedUrl(convoId: string, url: string) {
+    return this.request("/refresh-presigned", {
+      method: "POST",
+      body: JSON.stringify({ convoId, url }),
     })
   }
 

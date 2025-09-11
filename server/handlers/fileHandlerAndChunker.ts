@@ -300,13 +300,11 @@ export const multiMediaUploader = async ({ body, user }: {
 
 }
 
-export const generateNewPresignedUrl = async({ body, user}:{
+export const generateNewPresignedUrl = async({ body}:{
 
     body: typeof presignedUrlSchema.body,
-    user:User
 
 }) => {
-
 
     const {convoId, url} = body
 
