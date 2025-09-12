@@ -173,3 +173,28 @@ export const deleteConversation = async ({ params, user }: {
     };
 
 }
+
+export const getConvoMessages = async({params,user}:{
+    params:{
+        convoId:string
+    },
+    user:User
+})=>{
+
+    const {convoId} = params;
+
+    const messages = await convoClient.findOne({
+        _id: new ObjectId(convoId),
+        userId: user.id
+    },{
+        projection:{
+            messages:1,
+            updatedAt:1,
+            _id: 0
+        }
+    });
+
+    return messages ? messages : [];
+
+
+}

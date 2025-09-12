@@ -32,7 +32,6 @@ import {
   SkipBack,
   Volume2,
 } from "lucide-react"
-import { useDropzone } from "react-dropzone"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   AlertDialog,
@@ -45,7 +44,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Slider } from "@/components/ui/slider"
 
 interface Message {
   role: "user" | "assistant"
@@ -93,6 +91,8 @@ export default function ChatPage() {
   const [isUploadLoading, setIsUploadLoading] = useState(false)
   const [isPodcastLoading, setIsPodcastLoading] = useState(false)
   const [isConversationLoading, setIsConversationLoading] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processingMessage, setProcessingMessage] = useState("")
   const [inputMessage, setInputMessage] = useState("")
   const [podcastTopic, setPodcastTopic] = useState("")
   const [showPodcastInput, setShowPodcastInput] = useState(false)
@@ -107,29 +107,29 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isDragActive, setIsDragActive] = useState(false) // Added state for drag active
 
   useEffect(() => {
-    const checkAuthStatus = async () => {
+  const initializeApp = async () => {
+    if (user) {
       try {
         const response = await api.getUserStatus()
         if (!response.success || response.message !== "User logged in") {
           logout()
-          router.push("/login")
+          router.push("/")
+          return
         }
+        // Only load conversations if auth check passes
+        await loadConversations()
       } catch (error) {
         logout()
-        router.push("/login")
+        router.push("/")
       }
     }
+  }
 
-    if (user) {
-      checkAuthStatus()
-    }
-  }, [user, logout, router])
-
-  useEffect(() => {
-    loadConversations()
-  }, [])
+  initializeApp()
+}, [user, logout, router])
 
   const loadConversations = async () => {
     try {
@@ -250,80 +250,100 @@ export default function ChatPage() {
     }
   }
 
-  // Separate file upload handler
-  const handleFileUpload = async (file: File) => {
-    if (!file) return
+const handleFileUpload = async (files: File[]) => {
+  if (!files.length) return
 
-    setShowUploadDialog(true)
-    setUploadProgress(`Uploading ${file.name}...`)
-    setIsUploadLoading(true)
+  // Create new conversation if none exists
+  let convoId = currentConvoId ? currentConvoId : null;
+  setIsUploadLoading(true)
+  setShowUploadDialog(true)
+  setIsProcessing(true)
 
-    try {
-      const isMultimedia = file.type.startsWith("video/") || file.type.startsWith("audio/")
-      const response = isMultimedia
-        ? await api.uploadMultimedia(file, currentConvoId)
-        : await api.uploadFile(file, currentConvoId)
-
-      if (response.success) {
-        if (response.convoId && !currentConvoId) {
-          setCurrentConvoId(response.convoId)
-        }
-
-        const fileMessage: UIMessage = {
-          id: Date.now().toString(),
-          content: `Uploaded ${file.name}`,
-          role: "user",
-          timestamp: new Date(),
-          type: "file",
-          fileInfo: {
-            name: file.name,
-            type: file.type,
-          },
-        }
-
-        setMessages((prev) => [...prev, fileMessage])
-
-        toast({
-          title: "File uploaded successfully",
-          description: response.message || "Your file has been processed.",
-        })
-
-        loadConversations()
-      } else {
-        toast({
-          title: "Upload failed",
-          description: response.error || "Please try again.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      toast({
-        title: "Upload Error",
-        description: "Something went wrong during upload. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsUploadLoading(false)
-      setShowUploadDialog(false)
-      setUploadProgress("")
-    }
+  const file = files[0]
+  if (file.type.includes("audio")) {
+    setProcessingMessage("Analysing audio content...")
+  } else if (file.type.includes("video")) {
+    setProcessingMessage("Processing video file...")
+  } else if (file.type.includes("pdf")) {
+    setProcessingMessage("Thinking through the document...")
+  } else {
+    setProcessingMessage("Processing your file...")
   }
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop: async (acceptedFiles) => {
-      const file = acceptedFiles[0]
-      if (file) {
-        await handleFileUpload(file)
+  try {
+    for (const file of files) {
+      // Add file message to UI immediately with proper formatting
+      const fileMessage: UIMessage = {
+        id: `file-${Date.now()}-${Math.random()}`,
+        content: `Uploaded ${file.name}`,
+        role: "user",
+        timestamp: new Date(),
+        type: "file",
+        fileInfo: {
+          name: file.name,
+          type: file.type,
+        },
       }
-    },
-    accept: {
-      "application/pdf": [".pdf"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
-      "video/*": [".mp4", ".avi", ".mov"],
-      "audio/*": [".mp3", ".wav", ".m4a"],
-    },
-  })
+
+      setMessages((prev) => [...prev, fileMessage])
+
+      setUploadProgress(`Uploading ${file.name}...`)
+      const response = convoId ? await api.uploadFile(file, convoId) : await api.uploadFile(file);
+      convoId = response.convoId!;
+      
+      // Update currentConvoId if it was null
+      if (!currentConvoId && convoId) {
+        setCurrentConvoId(convoId);
+      }
+
+      if (response.success) {
+        if (file.type.includes("pdf")) {
+          setUploadProgress(`Extracting text from ${file.name}...`)
+        } else if (file.type.includes("audio")) {
+          setUploadProgress(`Transcribing ${file.name}...`)
+        } else {
+          setUploadProgress(`Processing ${file.name}...`)
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+
+        // Add AI response message indicating processing is complete
+        const aiResponseMessage: UIMessage = {
+          id: `ai-response-${Date.now()}-${Math.random()}`,
+          content: `I've successfully processed your file: ${file.name}. You can now ask me questions about its content.`,
+          role: "assistant",
+          timestamp: new Date(),
+          type: "text",
+        }
+
+        setMessages((prev) => [...prev, aiResponseMessage])
+      } else {
+        // Remove the file message if upload failed
+        setMessages((prev) => prev.filter(msg => msg.id !== fileMessage.id))
+        throw new Error(response.error || "Upload failed")
+      }
+    }
+
+    toast({
+      title: "Upload Complete",
+      description: "Your files have been uploaded and processed successfully!",
+    })
+
+    // Refresh conversations list to show the new conversation
+    await loadConversations()
+  } catch (error) {
+    console.error("Upload error:", error)
+    toast({
+      title: "Upload Failed",
+      description: "Failed to upload files. Please try again.",
+      variant: "destructive",
+    })
+  } finally {
+    setIsUploadLoading(false)
+    setShowUploadDialog(false)
+    setUploadProgress("")
+    setIsProcessing(false)
+  }
+}
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return
@@ -338,6 +358,8 @@ export default function ChatPage() {
 
     setMessages((prev) => [...prev, userMessage])
     setIsLoading(true)
+    setIsProcessing(true)
+    setProcessingMessage("Thinking...")
     const messageToSend = inputMessage
     setInputMessage("")
 
@@ -374,6 +396,8 @@ export default function ChatPage() {
       })
     } finally {
       setIsLoading(false)
+      setIsProcessing(false)
+      setProcessingMessage("")
     }
   }
 
@@ -381,18 +405,23 @@ export default function ChatPage() {
     if (!podcastTopic.trim()) return
 
     setIsPodcastLoading(true)
+    setIsProcessing(true)
+    setProcessingMessage("Crafting your podcast content...")
+    setShowPodcastInput(false)
 
     try {
       const response = await api.generatePodcast(podcastTopic, currentConvoId)
 
-      if (response.success && response.audioUrl) {
+      console.log(response)
+
+      if (response.success && response.data) {
         const podcastMessage: UIMessage = {
           id: Date.now().toString(),
           content: `Generated podcast: "${podcastTopic}"`,
           role: "assistant",
           timestamp: new Date(),
           type: "podcast",
-          audioUrl: response.audioUrl,
+          audioUrl: response.data,
         }
 
         setMessages((prev) => [...prev, podcastMessage])
@@ -424,6 +453,8 @@ export default function ChatPage() {
       })
     } finally {
       setIsPodcastLoading(false)
+      setIsProcessing(false)
+      setProcessingMessage("")
     }
   }
 
@@ -435,7 +466,6 @@ export default function ChatPage() {
         const audio = new Audio(audioUrl)
         audioRefs.current[messageId] = audio
 
-        // Wait for audio to load
         await new Promise((resolve, reject) => {
           audio.onloadedmetadata = () => {
             setAudioDuration((prev) => ({ ...prev, [messageId]: audio.duration }))
@@ -498,7 +528,6 @@ export default function ChatPage() {
   }
 
   const toggleAudio = async (messageId: string, audioUrl: string, podcast?: Podcast) => {
-    // If audio is currently playing, pause and clean up
     if (playingAudio === messageId) {
       audioRefs.current[messageId]?.pause()
       setPlayingAudio(null)
@@ -506,20 +535,17 @@ export default function ChatPage() {
       return
     }
 
-    // If another audio is playing, stop and clean it up
     if (playingAudio) {
       audioRefs.current[playingAudio]?.pause()
       cleanupAudio(playingAudio)
       setPlayingAudio(null)
     }
 
-    // Check if URL needs refreshing for podcasts
     let finalAudioUrl = audioUrl
     if (podcast) {
       finalAudioUrl = await checkAndRefreshPodcastUrl(podcast)
     }
 
-    // Load and play the new audio
     if (!loadedAudioUrls[messageId]) {
       await setupAudioControls(messageId, finalAudioUrl)
     }
@@ -546,14 +572,15 @@ export default function ChatPage() {
     }
   }
 
-  const setVolume = (messageId: string, volume: number) => {
-    if (audioRefs.current[messageId]) {
-      audioRefs.current[messageId].volume = volume
-      setAudioVolume((prev) => ({ ...prev, [messageId]: volume }))
+  const setVolumeForPodcast = (podcastId: string, volume: number) => {
+    if (audioRefs.current[podcastId]) {
+      audioRefs.current[podcastId].volume = volume
+      setAudioVolume((prev) => ({ ...prev, podcastId: volume }))
     }
   }
 
   const formatTime = (seconds: number) => {
+    if (isNaN(seconds)) return "0:00"
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, "0")}`
@@ -567,13 +594,11 @@ export default function ChatPage() {
     scrollToBottom()
   }, [messages])
 
-  // Handle file input change
   const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      handleFileUpload(file)
+    const files = event.target.files
+    if (files) {
+      handleFileUpload(Array.from(files))
     }
-    // Reset the input value so the same file can be selected again
     event.target.value = ""
   }
 
@@ -582,7 +607,6 @@ export default function ChatPage() {
     const now = new Date()
     const timeDiff = (now.getTime() - updatedAt.getTime()) / 1000 // Convert to seconds
 
-    // If more than 7200 seconds (2 hours) have passed, refresh the URL
     if (timeDiff > 7200) {
       try {
         const response = await api.refreshPresignedUrl(podcast.convoId, podcast.url)
@@ -595,6 +619,27 @@ export default function ChatPage() {
     }
 
     return podcast.url
+  }
+
+  const loadMessages = async (convoId: string) => {
+    try {
+      const response = await api.getMessages(convoId)
+      if (response.success && response.messages) {
+        console.log("setting messages")
+        setMessages(
+          response.messages.map((msg, index) => ({
+            ...msg,
+            id: `${convoId}-${index}`,
+            timestamp: new Date(response.updatedAt),
+          })),
+        )
+      } else {
+        setMessages([])
+      }
+    } catch (error) {
+      console.error("Failed to load messages:", error)
+      setMessages([])
+    }
   }
 
   return (
@@ -612,7 +657,6 @@ export default function ChatPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -712,36 +756,105 @@ export default function ChatPage() {
                     const audioUrl = podcast.url
                     if (!audioUrl) return null
 
+                    const isPlaying = playingAudio === podcast._id
+                    const progress = audioProgress[podcast._id] || 0
+                    const duration = audioDuration[podcast._id] || 0
+                    const volume = audioVolume[podcast._id] || 0.7
+
                     return (
                       <Card
                         key={podcast._id}
                         className="transition-all duration-300 hover:shadow-lg hover:scale-[1.02] animate-in slide-in-from-left duration-500"
                       >
                         <CardContent className="p-3">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => toggleAudio(podcast._id, audioUrl, podcast)}
-                              className="transition-all duration-200 hover:scale-110"
-                              disabled={audioLoading[podcast._id]}
-                            >
-                              {audioLoading[podcast._id] ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : playingAudio === podcast._id ? (
-                                <Pause className="h-3 w-3" />
-                              ) : (
-                                <Play className="h-3 w-3" />
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => toggleAudio(podcast._id, audioUrl, podcast)}
+                                className="transition-all duration-200 hover:scale-110"
+                                disabled={audioLoading[podcast._id]}
+                              >
+                                {audioLoading[podcast._id] ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : isPlaying ? (
+                                  <Pause className="h-3 w-3" />
+                                ) : (
+                                  <Play className="h-3 w-3" />
+                                )}
+                              </Button>
+
+                              {!audioLoading[podcast._id] && duration > 0 && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => skipAudio(podcast._id, -10)}
+                                    className="transition-all duration-200 hover:scale-110"
+                                  >
+                                    <SkipBack className="h-2.5 w-2.5" />
+                                  </Button>
+
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => skipAudio(podcast._id, 10)}
+                                    className="transition-all duration-200 hover:scale-110"
+                                  >
+                                    <SkipForward className="h-2.5 w-2.5" />
+                                  </Button>
+                                </>
                               )}
-                            </Button>
-                            {audioLoading[podcast._id] && (
-                              <span className="text-xs text-muted-foreground animate-pulse">
-                                Please wait while we load your audio...
-                              </span>
+
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-muted-foreground truncate">
+                                  Podcast • {new Date(podcast.createdAt).toLocaleDateString()}
+                                </div>
+                                {audioLoading[podcast._id] && (
+                                  <div className="text-xs text-primary animate-pulse">Loading audio...</div>
+                                )}
+                              </div>
+                            </div>
+
+                            {duration > 0 && !audioLoading[podcast._id] && (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-muted-foreground">{formatTime(progress)}</span>
+                                  <div className="flex-1">
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max={duration}
+                                      value={progress}
+                                      onChange={(e) => seekAudio(podcast._id, Number(e.target.value))}
+                                      className="audio-slider w-full h-1 bg-muted rounded-lg appearance-none cursor-pointer"
+                                    />
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">{formatTime(duration)}</span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <Volume2 className="h-3 w-3 text-muted-foreground" />
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.1"
+                                    value={volume}
+                                    onChange={(e) => {
+                                      const volume = Number(e.target.value)
+                                      setAudioVolume((prev) => ({ ...prev, [podcast._id]: volume }))
+                                      if (audioRefs.current[podcast._id]) {
+                                        audioRefs.current[podcast._id].volume = volume
+                                      }
+                                    }}
+                                    className="audio-slider flex-1 h-1 bg-muted rounded-lg appearance-none cursor-pointer"
+                                  />
+                                  <span className="text-xs text-muted-foreground">{Math.round(volume * 100)}%</span>
+                                </div>
+                              </div>
                             )}
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(podcast.createdAt).toLocaleDateString()}
-                            </span>
                           </div>
                         </CardContent>
                       </Card>
@@ -780,7 +893,7 @@ export default function ChatPage() {
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto p-4 relative min-h-0">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center max-w-md">
@@ -793,10 +906,9 @@ export default function ChatPage() {
                   </p>
 
                   <div
-                    {...getRootProps()}
+                    onClick={() => fileInputRef.current?.click()}
                     className="border-2 border-dashed rounded-lg p-8 border-muted-foreground/25 cursor-pointer transition-all duration-300 hover:border-primary/50 hover:bg-primary/5"
                   >
-                    <input {...getInputProps()} />
                     <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">Drag & drop files here or click to browse</p>
                     <p className="text-xs text-muted-foreground mt-1">PDF, DOCX, PPTX, Video, Audio</p>
@@ -808,7 +920,9 @@ export default function ChatPage() {
                 {messages.map((message, index) => (
                   <div
                     key={message.id}
-                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-3 duration-500`}
+                    className={`flex animate-in slide-in-from-bottom duration-500 ${
+                      message.role === "user" ? "justify-end" : "justify-start"
+                    }`}
                     style={{ animationDelay: `${index * 100}ms` }}
                   >
                     <div
@@ -849,9 +963,7 @@ export default function ChatPage() {
                             </Button>
 
                             {audioLoading[message.id] ? (
-                              <span className="text-xs text-muted-foreground animate-pulse">
-                                Please wait while we load your audio...
-                              </span>
+                              <span className="text-xs text-primary animate-pulse">Loading audio...</span>
                             ) : (
                               <>
                                 <Button
@@ -885,30 +997,42 @@ export default function ChatPage() {
 
                           {audioDuration[message.id] && !audioLoading[message.id] && (
                             <div className="space-y-2">
-                              <Slider
-                                value={[audioProgress[message.id] || 0]}
-                                max={audioDuration[message.id]}
-                                step={1}
-                                onValueChange={([value]) => seekAudio(message.id, value)}
-                                className="w-full"
-                              />
-                              <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>{formatTime(audioProgress[message.id] || 0)}</span>
-                                <span>{formatTime(audioDuration[message.id])}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">
+                                  {formatTime(audioProgress[message.id] || 0)}
+                                </span>
+                                <div className="flex-1">
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max={audioDuration[message.id]}
+                                    value={audioProgress[message.id] || 0}
+                                    onChange={(e) => seekAudio(message.id, Number(e.target.value))}
+                                    className="audio-slider w-full h-1 bg-muted rounded-lg appearance-none cursor-pointer"
+                                  />
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                  {formatTime(audioDuration[message.id])}
+                                </span>
                               </div>
                             </div>
                           )}
 
-                          {!audioLoading[message.id] && audioDuration[message.id] && (
-                            <div className="flex items-center gap-2 mt-2">
-                              <Volume2 className="h-3 w-3" />
-                              <Slider
-                                value={[audioVolume[message.id] || 0.7]}
-                                max={1}
-                                step={0.1}
-                                onValueChange={([value]) => setVolume(message.id, value)}
-                                className="w-20"
+                          {loadedAudioUrls[message.id] && (
+                            <div className="flex items-center gap-2">
+                              <Volume2 className="h-3 w-3 text-muted-foreground" />
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.1"
+                                value={audioVolume[message.id] || 0.7}
+                                onChange={(e) => setVolumeForPodcast(message.id, Number(e.target.value))}
+                                className="audio-slider flex-1 h-1 bg-muted rounded-lg appearance-none cursor-pointer"
                               />
+                              <span className="text-xs text-muted-foreground w-8">
+                                {Math.round((audioVolume[message.id] || 0.7) * 100)}%
+                              </span>
                             </div>
                           )}
                         </div>
@@ -919,6 +1043,16 @@ export default function ChatPage() {
                     </div>
                   </div>
                 ))}
+                {isProcessing && (
+                  <div className="flex justify-start animate-in slide-in-from-bottom duration-300">
+                    <div className="max-w-[80%] bg-muted rounded-lg p-3">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        <span className="text-sm text-muted-foreground animate-pulse">{processingMessage}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div ref={messagesEndRef} />
               </div>
             )}
@@ -950,15 +1084,19 @@ export default function ChatPage() {
               />
               <Button
                 onClick={handleSendMessage}
-                disabled={isLoading}
+                disabled={isLoading || isProcessing}
                 className="transition-all duration-300 hover:scale-110 hover:shadow-lg"
               >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {isLoading || isProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isUploadLoading}
+                disabled={isUploadLoading || isProcessing}
                 className="transition-all duration-300 hover:scale-110 hover:shadow-lg"
               >
                 <Upload className="h-4 w-4" />
@@ -983,10 +1121,10 @@ export default function ChatPage() {
                 />
                 <Button
                   onClick={handleGeneratePodcast}
-                  disabled={isPodcastLoading}
+                  disabled={isPodcastLoading || isProcessing}
                   className="transition-all duration-300 hover:scale-110 hover:shadow-lg"
                 >
-                  {isPodcastLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Generate"}
+                  {isPodcastLoading || isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Generate"}
                 </Button>
               </div>
             )}

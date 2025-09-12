@@ -1,4 +1,3 @@
-// DO NOT RUN THIS WORKER USING BUN 
 
 import type { MessageDto } from "./workerDto.ts";
 import { Worker } from "node:worker_threads";

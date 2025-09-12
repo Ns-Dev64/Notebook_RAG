@@ -10,13 +10,13 @@ import type { MessageDto } from "../workers/workerDto";
 import axios from "axios";
 import path from "path";
 import type { AutomaticSpeechRecognitionOutput } from "@huggingface/transformers";
-import { getObjectUrl,isResourceExisting } from "../utils/s3";
+import { getObjectUrl, isResourceExisting } from "../utils/s3";
 
 const pineConeClient = await getPineconeClient();
 let convoClient = (await getMongoClient()).collection("conversation");
 let podcastClient = (await getMongoClient()).collection("podcast");
 
-export const presignedUrlSchema ={
+export const presignedUrlSchema = {
     body: t.Object({
         convoId: t.String(),
         url: t.String()
@@ -110,10 +110,17 @@ export const uploader = async ({ body, user }: {
     let convo = await findOrUpsertConversation(convoId, user);
 
     let namespaceKey = `${user.id}-${convo?._id}`;
-    let message ={
-        role:"user",
-        content:`Uploaded ${file.name}`,
+    let message = {
+        role: "user",
+        content: `Uploaded ${file.name}`,
     };
+
+    let defaultAIMessage = {
+
+        role: "assitant",
+        content: `I've successfully processed your file: ${file.name}. You can now ask me questions about its content.`
+    }
+
 
     await Promise.all([
         pineConeClient.namespace(namespaceKey).upsert(vectors),
@@ -122,7 +129,9 @@ export const uploader = async ({ body, user }: {
         },
             {
                 $push: {
-                    messages: message
+                    messages: {
+                        $each: [message, defaultAIMessage]
+                    }
                 } as any,
                 $set: {
                     updatedAt: new Date().toISOString()
@@ -154,53 +163,53 @@ export const multiMediaUploader = async ({ body, user }: {
 
     let isConvoValid = await findOrUpsertConversation(convoId, user);
     if (isConvoValid?.messages.length > 250) throw new Error("Conversation length exceeded");
-    
+
     await mkdir(tempDir, { recursive: true });
 
     const timestamp = Date.now()
     let tempFilename = `temp_${timestamp}_${file.name}`
     let tempPath = `${tempDir}/${tempFilename}`;
     let chunks!: MessageDto;
-    
-    
+
+
     try {
         await Bun.write(tempPath, file);
-        
+
         if (file.type.includes("audio")) {
-            
-            const proccessedAudioPath=`${tempDir}/temp_${timestamp}_proccessed.wav`;
-            
-            await new Promise<void>((res,rej)=>{
-                
+
+            const proccessedAudioPath = `${tempDir}/temp_${timestamp}_proccessed.wav`;
+
+            await new Promise<void>((res, rej) => {
+
                 ffmpeg(tempPath)
-                .toFormat("wav")
-                .audioFrequency(16000)
-                .audioChannels(1)
-                .on("end",()=>{
-                    res();
-                })
-                .on("error",(err)=>{
-                    rej(err)
-                })
-                .save(proccessedAudioPath)
-            })  
-            
-            
-            const res = await axios.post("http://localhost:5000/api/v1/processor",{
-                filepath:proccessedAudioPath,
-                type : "audio"
+                    .toFormat("wav")
+                    .audioFrequency(16000)
+                    .audioChannels(1)
+                    .on("end", () => {
+                        res();
+                    })
+                    .on("error", (err) => {
+                        rej(err)
+                    })
+                    .save(proccessedAudioPath)
+            })
+
+
+            const res = await axios.post("http://localhost:5000/api/v1/processor", {
+                filepath: proccessedAudioPath,
+                type: "audio"
             });
 
-            
-            chunks = res.data; 
-            
+
+            chunks = res.data;
+
             await unlink(proccessedAudioPath);
 
         }
         if (file.type.includes("video")) {
 
-            const proccessedVideoPath=`${tempDir}/temp_${timestamp}_proccessed.wav`;
-           
+            const proccessedVideoPath = `${tempDir}/temp_${timestamp}_proccessed.wav`;
+
             await new Promise<void>((res, rej) => {
                 ffmpeg(tempPath)
                     .audioCodec('pcm_s16le')
@@ -218,17 +227,17 @@ export const multiMediaUploader = async ({ body, user }: {
             })
 
 
-            const res = await axios.post("http://localhost:5000/api/v1/processor",{
-                filepath:proccessedVideoPath,
-                type : "video"
+            const res = await axios.post("http://localhost:5000/api/v1/processor", {
+                filepath: proccessedVideoPath,
+                type: "video"
             });
 
-            chunks = res.data; 
+            chunks = res.data;
 
         }
     }
-    catch (err:any) {
-        
+    catch (err: any) {
+
         await unlink(tempPath);
         throw err;
     }
@@ -270,10 +279,16 @@ export const multiMediaUploader = async ({ body, user }: {
 
     let namespaceKey = `${user.id}-${convo?._id}`;
 
-    let message ={
-        role:"user",
-        content:`Uploaded ${file.name}`,
+    let message = {
+        role: "user",
+        content: `Uploaded ${file.name}`,
     };
+    let defaultAIMessage = {
+
+        role: "assitant",
+        content: `I've successfully processed your file: ${file.name}. You can now ask me questions about its content.`
+    }
+
 
     await Promise.all([
         pineConeClient.namespace(namespaceKey).upsert(vectors),
@@ -282,7 +297,9 @@ export const multiMediaUploader = async ({ body, user }: {
         },
             {
                 $push: {
-                    messages: message
+                    messages: {
+                        $each: [message,defaultAIMessage]
+                    }
                 } as any,
                 $set: {
                     updatedAt: new Date().toISOString()
@@ -300,29 +317,35 @@ export const multiMediaUploader = async ({ body, user }: {
 
 }
 
-export const generateNewPresignedUrl = async({ body}:{
+export const generateNewPresignedUrl = async ({ body }: {
 
     body: typeof presignedUrlSchema.body,
 
 }) => {
 
-    const {convoId, url} = body
+    const { convoId, url } = body
 
     const podcast = await podcastClient.findOne({
         convoId
     });
 
-    if(!podcast) throw new Error("Invalid conversation");
+    if (!podcast) throw new Error("Invalid conversation");
 
-    if(podcast.url !== url) throw new Error("Invalid Url");
+    if (podcast.url !== url) throw new Error("Invalid Url");
 
-    if(!await isResourceExisting(podcast.path)) throw new Error("Invalid resource");
+    const futureUpdatedAt = new Date(podcast.updatedAt).getTime() + 2 * 3600 * 1000;
+    const now = Date.now();
 
-    const newObjectUrl = getObjectUrl(url);
+    if (futureUpdatedAt > now) throw new Error("Url is not expired yet");
+
+    if (!await isResourceExisting(podcast.path)) throw new Error("Invalid resource");
+
+
+    const newObjectUrl = getObjectUrl(podcast.path);
 
     await podcastClient.updateOne({
         convoId
-    },{
+    }, {
         url: newObjectUrl,
         updatedAt: new Date().toISOString()
     })
@@ -330,6 +353,6 @@ export const generateNewPresignedUrl = async({ body}:{
     return {
         url: newObjectUrl
     }
-   
+
 
 }

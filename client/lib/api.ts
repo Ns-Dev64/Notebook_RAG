@@ -44,11 +44,11 @@ class ApiClient {
             error: errorData.message || "An error occurred",
           }
         }
-        const blob = await response.blob()
-        const audioUrl = URL.createObjectURL(blob)
-        return {
-          success: true,
-          data: audioUrl as T,
+        const data = await response.json();
+        const {audioUrl} = data;
+        return{
+          success:true,
+          data: audioUrl as T
         }
       }
 
@@ -165,6 +165,14 @@ class ApiClient {
     return this.request(`/user/convo/${convoId}`, {
       method: "DELETE",
     })
+  }
+
+  async getMessages(convoId:string){
+
+    return this.request(`/user/convo/messages/${convoId}`,{
+      method: 'GET',
+    })
+
   }
 
   async getUserStatus() {
