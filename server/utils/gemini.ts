@@ -6,7 +6,7 @@ import {
   HarmCategory,
 } from '@google/genai';
 
-import { chatInstruction } from './instructions';
+import { SYSTEM_INSTRUCTION } from './instructions';
 
 export async function aiChat(prompt:any) {
   const ai = new GoogleGenAI({
@@ -36,7 +36,7 @@ export async function aiChat(prompt:any) {
     ],
     systemInstruction: [
         {
-          text: chatInstruction,
+          text: SYSTEM_INSTRUCTION,
         }
     ],
   };

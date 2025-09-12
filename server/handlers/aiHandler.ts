@@ -10,8 +10,9 @@ import axios from "axios";
 import { uploadToS3 } from "../utils/s3";
 
 const pineConeClient = await getPineconeClient();
-const mongoClient = (await getMongoClient()).collection("conversation");
+const convoClient = (await getMongoClient()).collection("conversation");
 const podcastClient = (await getMongoClient()).collection("podcast");
+const diagramClient = (await getMongoClient()).collection("diagram");
 
 export const chatSchema = {
     body: t.Object({
@@ -63,15 +64,14 @@ export const chatWithAi = async ({ body, user, set }: {
         content: `Relevant context from DB:\n${constructQuery}`
     };
 
-
-    let query: any= {};
+    let query: any = {};
 
     if (Array.isArray(conversation)) {
-        query.conversation=conversation;
-    } 
+        query.conversation = conversation;
+    }
 
-    query.userQuery=userChat;
-    query.dBResults=dBResults;
+    query.userQuery = userChat;
+    query.dBResults = dBResults;
 
     const response = await aiChat(query);
 
@@ -80,12 +80,12 @@ export const chatWithAi = async ({ body, user, set }: {
     let messages = [
         userChat,
         {
-            role: "assistant", 
+            role: "assistant",
             content: formattedResponse
         },
     ];
 
-    await mongoClient.updateOne(
+    await convoClient.updateOne(
         {
             _id: new ObjectId(convo?._id)
         },
@@ -111,13 +111,13 @@ export const chatWithAi = async ({ body, user, set }: {
 };
 
 
-export const createPodcast = async({body,user,set}:{
-    body : typeof chatSchema.body,
-    user : User,
+export const createPodcast = async ({ body, user, set }: {
+    body: typeof chatSchema.body,
+    user: User,
     set: any
-})=>{
+}) => {
 
-    const {chat,convoId} = body;
+    const { chat, convoId } = body;
 
     let convo = await findOrUpsertConversation(convoId, user);
 
@@ -140,21 +140,19 @@ export const createPodcast = async({body,user,set}:{
         constructQuery += `${content}\n`;
     });
 
-    let preQuery = `Generate a podcast-style narration in a natural, conversational tone. Write it as continuous spoken content, not as a script with stage directions. The narration should be professional yet engaging, suitable for direct use in text-to-speech to produce an audio podcast. Return the response strictly as a single string, for example:
-
-        "Welcome to the podcast ....". You are giving a podcast to a single person so make sure its inclined towards one individual`
+    let preQuery = `${chat}, content (Podcast generation): `
 
     const finalQuery = `${preQuery}\n${constructQuery}`;
-    
-    
+
+
     const response = await aiChat(finalQuery);
 
     const buffer = await tts(response as string);
 
-    const {presignedUrl,path} = await uploadToS3(buffer!,user.id);
+    const { presignedUrl, path } = await uploadToS3(buffer!, user.id);
 
     await podcastClient.insertOne({
-        userId:user.id,
+        userId: user.id,
         convoId,
         url: presignedUrl,
         path: path,
@@ -170,7 +168,76 @@ export const createPodcast = async({body,user,set}:{
 
 }
 
-async function tts(content:string) {
+export const generateDiagram = async ({ body, user }: {
+
+    body: typeof chatSchema.body,
+    user: User
+
+}) => {
+
+    const { chat, convoId } = body;
+
+    let convo = await findOrUpsertConversation(convoId, user);
+
+    if (convo?.messages.length > 250) throw new Error("Conversation length exceeded");
+
+    const vectorEmbedding = await embedder(String(chat));
+
+    let namespaceKey = `${user.id}-${convo?._id}`;
+
+    const results = await pineConeClient.namespace(namespaceKey).query({
+        topK: 10,
+        vector: vectorEmbedding,
+        includeMetadata: true
+    });
+
+    let constructQuery = "";
+
+    results.matches.forEach((match) => {
+        const content = match?.metadata?.content as string;
+        constructQuery += `${content}\n`;
+    });
+
+    let conversation = convo?.messages.length > 0 ? convo?.messages : null;
+
+    let preQuery = `${chat}, content(Mermaid generation): `
+
+    const finalQuery = `${preQuery}\n${constructQuery}\n Conversation:${conversation}`;
+
+    const response = await aiChat(finalQuery);
+
+    let message = {
+        role: "user",
+        content: chat
+    };
+
+    await Promise.all([
+        diagramClient.insertOne({
+            userId: user.id,
+            convoId,
+            rawSyntax: response,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        }),
+        convoClient.updateOne({
+            _id: new ObjectId(convoId as string),
+            userId: user.id
+        }, {
+            $push: {
+                messages: message
+            } as any,
+            $set: {
+                updatedAt: new Date().toISOString()
+            }
+        })
+    ]);
+
+    return { rawData: response }
+
+}
+
+
+async function tts(content: string) {
 
     try {
 
@@ -180,15 +247,15 @@ async function tts(content:string) {
 
         const buffer = Buffer.from(res.data.audio);
 
-        if(!buffer) throw new Error("Error occured while processing script.");
+        if (!buffer) throw new Error("Error occured while processing script.");
 
         return buffer;
 
     }
-    catch (err:any) {
+    catch (err: any) {
 
         console.log(err.data);
     }
 
-    
+
 }

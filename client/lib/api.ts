@@ -149,6 +149,12 @@ class ApiClient {
     })
   }
 
+  async getConversationDiagrams(convoId: string){
+    return this.request(`/use/convo/diagram/${convoId}`,{
+      method: "GET"
+    });
+  }
+
   async getConversations() {
     return this.request("/user/convo", {
       method: "GET",
@@ -172,6 +178,15 @@ class ApiClient {
     return this.request(`/user/convo/messages/${convoId}`,{
       method: 'GET',
     })
+
+  }
+
+  async generateDiagram(query:string, convoId:string){
+    
+    return this.request("/ai/diagram",{
+      method:'POST',
+      body: JSON.stringify({chat:query,convoId})
+    });
 
   }
 

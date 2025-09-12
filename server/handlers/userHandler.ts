@@ -9,6 +9,7 @@ const pineConeClient = await getPineconeClient();
 let userClient = (await getMongoClient()).collection("users");
 let convoClient = (await getMongoClient()).collection("conversation");
 let podcastClient = (await getMongoClient()).collection("podcast");
+let diagramClient = (await getMongoClient()).collection("diagram");
 export interface User {
     email: string,
     id: string,
@@ -154,13 +155,16 @@ export const deleteConversation = async ({ params, user }: {
         { projection: { path: 1, _id: 0 } }
     ).toArray();
 
-    const paths:string[] = docs.map(doc => doc.path);
+    const paths: string[] = docs.map(doc => doc.path);
 
     await Promise.all([
         convoClient.deleteOne({
             _id: new ObjectId(convoId)
         }),
         podcastClient.deleteMany({
+            convoId
+        }),
+        diagramClient.deleteMany({
             convoId
         }),
         deletefromS3(paths),
@@ -174,22 +178,40 @@ export const deleteConversation = async ({ params, user }: {
 
 }
 
-export const getConvoMessages = async({params,user}:{
-    params:{
-        convoId:string
+export const getConverastionDiagrams = async({params}:{
+      params: {
+        convoId: string
     },
-    user:User
 })=>{
 
+
     const {convoId} = params;
+
+    const diagrams = await diagramClient.find({
+        convoId
+    }).toArray();
+
+
+    return diagrams ? diagrams : [];
+
+}
+
+export const getConvoMessages = async ({ params, user }: {
+    params: {
+        convoId: string
+    },
+    user: User
+}) => {
+
+    const { convoId } = params;
 
     const messages = await convoClient.findOne({
         _id: new ObjectId(convoId),
         userId: user.id
-    },{
-        projection:{
-            messages:1,
-            updatedAt:1,
+    }, {
+        projection: {
+            messages: 1,
+            updatedAt: 1,
             _id: 0
         }
     });
