@@ -8,6 +8,10 @@ interface ApiResponse<T = any> {
   user?: any
   token?: string
   convoId?: string
+  messages?: any[],
+  audioUrl?: string,
+  rawSyntax?: string,
+  rawData?: string
 }
 
 class ApiClient {
@@ -62,6 +66,14 @@ class ApiClient {
       }
 
       if (endpoint === "/user/convo") {
+        return {
+          success: true,
+          data,
+        }
+      }
+
+      if(endpoint.startsWith("/user/convo/diagram/")) {
+
         return {
           success: true,
           data,
@@ -150,7 +162,7 @@ class ApiClient {
   }
 
   async getConversationDiagrams(convoId: string){
-    return this.request(`/use/convo/diagram/${convoId}`,{
+    return this.request(`/user/convo/diagram/${convoId}`,{
       method: "GET"
     });
   }

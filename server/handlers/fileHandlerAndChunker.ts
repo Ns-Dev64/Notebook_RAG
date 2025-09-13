@@ -113,12 +113,14 @@ export const uploader = async ({ body, user }: {
     let message = {
         role: "user",
         content: `Uploaded ${file.name}`,
+        timestamp: new Date().toISOString()
     };
 
     let defaultAIMessage = {
 
         role: "assitant",
-        content: `I've successfully processed your file: ${file.name}. You can now ask me questions about its content.`
+        content: `I've successfully processed your file: ${file.name}. You can now ask me questions about its content.`,
+        timestamp: new Date().toISOString()
     }
 
 
@@ -282,11 +284,13 @@ export const multiMediaUploader = async ({ body, user }: {
     let message = {
         role: "user",
         content: `Uploaded ${file.name}`,
+        timestamp: new Date().toISOString()
     };
     let defaultAIMessage = {
 
         role: "assitant",
-        content: `I've successfully processed your file: ${file.name}. You can now ask me questions about its content.`
+        content: `I've successfully processed your file: ${file.name}. You can now ask me questions about its content.`,
+        timestamp: new Date().toISOString()
     }
 
 

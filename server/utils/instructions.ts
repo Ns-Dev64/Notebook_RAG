@@ -37,14 +37,104 @@ You will be given:
 Your job: Generate only valid Mermaid diagram code that matches the task and content. Do not add any explanations, formatting, markdown fences, or extra text — output only the mermaid code.
 
 Rules:
-- If \`task\` = "flowchart":
-  - Use \`flowchart LR\` as the base
-  - If \`content\` contains explicit arrows like \`A -> B\` or \`A --> B\`, keep them as edges
-  - Otherwise, split \`content\` by newlines or sentences, and connect them sequentially as nodes
-- If \`task\` = "mindmap":
-  - Use \`mindmap\` syntax
-  - First item in \`content\` is the root
-  - Remaining items are children nodes branching out
+
+Always start with the diagram type declaration (e.g., flowchart TD, sequenceDiagram, classDiagram)
+Use only valid Mermaid syntax - never mix syntaxes from different versions or diagram types
+Validate all node IDs and connections before finalizing
+Use consistent naming conventions throughout the diagram
+Test syntax mentally by tracing through each connection
+
+Diagram Type Guidelines
+Flowcharts
+
+Start with: flowchart [direction] where direction is TD, LR, BT, or RL
+Node syntax: nodeId[Node Text] or nodeId(Node Text) or nodeId{Node Text}
+Connection syntax: A --> B or A --- B
+Labels: A -->|label| B
+
+Sequence Diagrams
+
+Start with: sequenceDiagram
+Participant declaration: participant A as Alice
+Messages: A->>B: Message text
+Activation: activate A and deactivate A
+
+Class Diagrams
+
+Start with: classDiagram
+Class definition: class ClassName
+Relationships: ClassA --|> ClassB (inheritance), ClassA --> ClassB (association)
+Methods/attributes: ClassName : +method() or ClassName : -attribute
+
+State Diagrams
+
+Start with: stateDiagram-v2
+States: [*] --> State1
+Transitions: State1 --> State2 : trigger
+
+Entity Relationship Diagrams
+
+Start with: erDiagram
+Entities: CUSTOMER { string name }
+Relationships: CUSTOMER ||--o{ ORDER : places
+
+Gantt Charts
+
+Start with: gantt
+Date format: dateFormat YYYY-MM-DD
+Sections: section Section Name
+Tasks: Task Name : task1, 2023-01-01, 30d
+
+Syntax Validation Checklist
+Before outputting any Mermaid code, verify:
+
+Diagram declaration is correct and matches content
+All node IDs are unique and consistently referenced
+All connections use valid syntax for the diagram type
+Special characters in text are properly escaped or avoided
+Indentation is consistent (use spaces, not tabs)
+No trailing spaces or empty lines that could cause parsing errors
+Quotation marks are used correctly for labels with spaces or special characters
+
+Common Error Prevention
+Avoid These Mistakes:
+
+Missing diagram type declaration
+Inconsistent node ID naming (mixing camelCase, snake_case, etc.)
+Invalid characters in node IDs (spaces, special symbols)
+Incorrect arrow syntax for diagram type
+Missing semicolons where required
+Improper escaping of special characters in labels
+Mixing diagram syntaxes
+
+Node ID Rules:
+
+Use alphanumeric characters and underscores only
+Start with a letter
+Keep IDs short but descriptive
+Be consistent with naming convention
+
+Text Label Rules:
+
+Wrap labels with spaces in quotes: A -->|"label with spaces"| B
+Escape special characters: "Label with \"quotes\""
+Keep labels concise for readability
+
+Output Format
+Always provide:
+
+Clean, properly formatted Mermaid code
+Brief explanation of the diagram structure
+Any assumptions made about the requirements
+
+Validation Process
+Before finalizing, mentally execute this checklist:
+
+Read through the entire syntax line by line
+Verify each connection references existing nodes
+Check that all opening brackets/parentheses have closing pairs
+Ensure diagram type supports all used features
+Confirm no syntax mixing between diagram types
 
 The output must be ready-to-use mermaid code that can be directly injected into a Next.js Mermaid component.
 

@@ -56,12 +56,14 @@ export const chatWithAi = async ({ body, user, set }: {
 
     const userChat = {
         role: "user",
-        content: chat
+        content: chat,
+        timestamp: new Date().toISOString()
     };
 
     const dBResults = {
         role: "system",
-        content: `Relevant context from DB:\n${constructQuery}`
+        content: `Relevant context from DB:\n${constructQuery}`,
+        timestamp: new Date().toISOString()
     };
 
     let query: any = {};
@@ -81,7 +83,8 @@ export const chatWithAi = async ({ body, user, set }: {
         userChat,
         {
             role: "assistant",
-            content: formattedResponse
+            content: formattedResponse,
+            timestamp: new Date().toISOString()
         },
     ];
 
@@ -151,14 +154,30 @@ export const createPodcast = async ({ body, user, set }: {
 
     const { presignedUrl, path } = await uploadToS3(buffer!, user.id);
 
-    await podcastClient.insertOne({
-        userId: user.id,
-        convoId,
-        url: presignedUrl,
-        path: path,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-    });
+    let message = {
+        role: "user",
+        content: chat,
+        timestamp: new Date().toISOString()
+    }
+
+    await Promise.all([
+        convoClient.updateOne({
+            _id: new ObjectId(convoId as string),
+            userId: user.id
+        }, {
+            $push: {
+                messages: message
+            } as any,
+        }),
+        podcastClient.insertOne({
+            userId: user.id,
+            convoId,
+            url: presignedUrl,
+            path: path,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        })
+    ]);
 
 
     return {
@@ -203,19 +222,25 @@ export const generateDiagram = async ({ body, user }: {
     let preQuery = `${chat}, content(Mermaid generation): `
 
     const finalQuery = `${preQuery}\n${constructQuery}\n Conversation:${conversation}`;
+       
 
     const response = await aiChat(finalQuery);
 
+    let formattedResponse = response!.trim();
+    
+    formattedResponse = formattedResponse.replace('mermaid', '').replace('```', '').trim();
+
     let message = {
         role: "user",
-        content: chat
+        content: chat,
+        timestamp: new Date().toISOString()
     };
 
     await Promise.all([
         diagramClient.insertOne({
             userId: user.id,
             convoId,
-            rawSyntax: response,
+            rawSyntax: formattedResponse,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         }),
@@ -232,7 +257,7 @@ export const generateDiagram = async ({ body, user }: {
         })
     ]);
 
-    return { rawData: response }
+    return { rawData: formattedResponse }
 
 }
 
