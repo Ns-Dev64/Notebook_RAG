@@ -157,6 +157,12 @@ export const deleteConversation = async ({ params, user }: {
 
     const paths: string[] = docs.map(doc => doc.path);
 
+    const namespaces =  await pineConeClient.listNamespaces();
+
+    if(key in namespaces) {
+        await pineConeClient.deleteNamespace(key)
+    }
+
     await Promise.all([
         convoClient.deleteOne({
             _id: new ObjectId(convoId)
@@ -168,7 +174,6 @@ export const deleteConversation = async ({ params, user }: {
             convoId
         }),
         deletefromS3(paths),
-        pineConeClient.deleteNamespace(key)
     ]);
 
 

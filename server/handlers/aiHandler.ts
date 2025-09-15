@@ -228,7 +228,7 @@ export const generateDiagram = async ({ body, user }: {
 
     let formattedResponse = response!.trim();
     
-    formattedResponse = formattedResponse.replace('mermaid', '').replace('```', '').trim();
+    formattedResponse = formattedResponse.replace('mermaid', '').replaceAll('```', '').trim();
 
     let message = {
         role: "user",

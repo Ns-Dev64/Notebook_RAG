@@ -206,36 +206,30 @@ export default function ChatPage() {
       const conversation = conversations.find((c) => c._id === convoId);
       console.log("[v0] Selected conversation:", conversation);
 
-      // Load messages and diagrams in parallel
-      const [messagesResponse, diagramsResponse, podcastsResponse] = await Promise.all([
-        conversation && conversation.messages && conversation.messages.length > 0 
-          ? Promise.resolve(conversation.messages) 
-          : Promise.resolve([]),
+      // Load messages from API to avoid stale state, alongside diagrams and podcasts
+      const [messagesApi, diagramsResponse, podcastsResponse] = await Promise.all([
+        api.getMessages(convoId),
         api.getConversationDiagrams(convoId),
         api.getConversationPodcasts(convoId)
       ]);
 
       // Process regular messages
-      const uiMessages: UIMessage[] = messagesResponse.map(
-        (msg, index) => {
-          const isFileUpload = msg.content.startsWith("Uploaded ");
-          const uiMessage = {
-            ...msg,
-            id: `${convoId}-${index}`,
-            timestamp: new Date(msg.timestamp || conversation?.updatedAt || Date.now()),
-            type: isFileUpload ? "file" : "text",
-            fileInfo: isFileUpload
-              ? {
-                  name: msg.content.replace("Uploaded ", ""),
-                  type: "application/octet-stream",
-                }
-              : undefined,
-          } as UIMessage;
-
-          console.log("[v0] Mapped message:", uiMessage);
-          return uiMessage;
-        }
-      );
+      const uiMessages: UIMessage[] = (messagesApi.success && Array.isArray(messagesApi.messages) ? messagesApi.messages : []).map((msg, index) => {
+        const isFileUpload = msg.content.startsWith("Uploaded ");
+        const uiMessage = {
+          ...msg,
+          id: `${convoId}-${index}`,
+          timestamp: new Date(msg.timestamp || conversation?.updatedAt || Date.now()),
+          type: isFileUpload ? "file" : "text",
+          fileInfo: isFileUpload
+            ? {
+                name: msg.content.replace("Uploaded ", ""),
+                type: "application/octet-stream",
+              }
+            : undefined,
+        } as UIMessage;
+        return uiMessage;
+      });
 
       // Process diagram messages
       const diagramMessages: UIDiagramMessage[] = [];
@@ -252,15 +246,26 @@ export default function ChatPage() {
         });
       }
 
-      // Process podcasts
-      if (podcastsResponse.success && podcastsResponse.data) {
-        setPodcasts(Array.isArray(podcastsResponse.data) ? podcastsResponse.data : []);
+      // Map podcasts into message-like items
+      const podcastMessages: UIMessage[] = [];
+      if (podcastsResponse.success && podcastsResponse.data && Array.isArray(podcastsResponse.data)) {
+        podcastsResponse.data.forEach((p) => {
+          podcastMessages.push({
+            id: `podcast-${p._id}`,
+            content: 'Podcast',
+            role: 'assistant',
+            timestamp: new Date(p.createdAt || Date.now()),
+            type: 'podcast',
+            audioUrl: p.url
+          });
+        });
+        setPodcasts(podcastsResponse.data);
       } else {
         setPodcasts([]);
       }
 
       // Combine and sort all messages by timestamp
-      const allMessages = [...uiMessages, ...diagramMessages].sort((a, b) => 
+      const allMessages = [...uiMessages, ...diagramMessages, ...podcastMessages].sort((a, b) => 
         a.timestamp.getTime() - b.timestamp.getTime()
       );
 
@@ -709,8 +714,8 @@ const response = convoId
   const setVolumeForPodcast = (podcastId: string, volume: number) => {
     if (audioRefs.current[podcastId]) {
       audioRefs.current[podcastId].volume = volume;
-      setAudioVolume((prev) => ({ ...prev, podcastId: volume }));
     }
+    setAudioVolume((prev) => ({ ...prev, [podcastId]: volume }));
   };
 
   const formatTime = (seconds: number) => {
@@ -968,144 +973,7 @@ const response = convoId
               </div>
             ) : (
               <div className="space-y-4 max-w-4xl mx-auto">
-                {/* Display podcasts for current conversation */}
-                {currentConvoId && podcasts.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-lg font-semibold mb-4 text-center">Podcasts</h3>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {podcasts.map((podcast) => {
-                        const audioUrl = podcast.url;
-                        if (!audioUrl) return null;
-
-                        const isPlaying = playingAudio === podcast._id;
-                        const progress = audioProgress[podcast._id] || 0;
-                        const duration = audioDuration[podcast._id] || 0;
-                        const volume = audioVolume[podcast._id] || 0.7;
-
-                        return (
-                          <Card
-                            key={podcast._id}
-                            className="transition-all duration-300 hover:shadow-lg hover:scale-[1.02] animate-in slide-in-from-bottom duration-500"
-                          >
-                            <CardContent className="p-4">
-                              <div className="space-y-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      toggleAudio(podcast._id, audioUrl, podcast)
-                                    }
-                                    className="transition-all duration-200 hover:scale-110"
-                                    disabled={audioLoading[podcast._id]}
-                                  >
-                                    {audioLoading[podcast._id] ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : isPlaying ? (
-                                      <Pause className="h-4 w-4" />
-                                    ) : (
-                                      <Play className="h-4 w-4" />
-                                    )}
-                                  </Button>
-
-                                  {!audioLoading[podcast._id] && duration > 0 && (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => skipAudio(podcast._id, -10)}
-                                        className="transition-all duration-200 hover:scale-110"
-                                      >
-                                        <SkipBack className="h-3 w-3" />
-                                      </Button>
-
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => skipAudio(podcast._id, 10)}
-                                        className="transition-all duration-200 hover:scale-110"
-                                      >
-                                        <SkipForward className="h-3 w-3" />
-                                      </Button>
-                                    </>
-                                  )}
-
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium truncate">
-                                      Podcast
-                                    </div>
-                                    <div className="text-xs text-muted-foreground truncate">
-                                      {new Date(podcast.createdAt).toLocaleDateString()}
-                                    </div>
-                                    {audioLoading[podcast._id] && (
-                                      <div className="text-xs text-primary animate-pulse">
-                                        Loading audio...
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {duration > 0 && !audioLoading[podcast._id] && (
-                                  <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-muted-foreground">
-                                        {formatTime(progress)}
-                                      </span>
-                                      <div className="flex-1">
-                                        <input
-                                          type="range"
-                                          min="0"
-                                          max={duration}
-                                          value={progress}
-                                          onChange={(e) =>
-                                            seekAudio(
-                                              podcast._id,
-                                              Number(e.target.value)
-                                            )
-                                          }
-                                          className="audio-slider w-full h-1 bg-muted rounded-lg appearance-none cursor-pointer"
-                                        />
-                                      </div>
-                                      <span className="text-xs text-muted-foreground">
-                                        {formatTime(duration)}
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                      <Volume2 className="h-3 w-3 text-muted-foreground" />
-                                      <input
-                                        type="range"
-                                        min="0"
-                                        max="1"
-                                        step="0.1"
-                                        value={volume}
-                                        onChange={(e) => {
-                                          const volume = Number(e.target.value);
-                                          setAudioVolume((prev) => ({
-                                            ...prev,
-                                            [podcast._id]: volume,
-                                          }));
-                                          if (audioRefs.current[podcast._id]) {
-                                            audioRefs.current[podcast._id].volume =
-                                              volume;
-                                          }
-                                        }}
-                                        className="audio-slider flex-1 h-1 bg-muted rounded-lg appearance-none cursor-pointer"
-                                      />
-                                      <span className="text-xs text-muted-foreground">
-                                        {Math.round(volume * 100)}%
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                {/* Podcasts are now merged into messages chronologically */}
 
 
                 {messages.map((message, index) => (
