@@ -107,6 +107,7 @@ export default function ChatPage() {
   const [isConversationLoading, setIsConversationLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState("");
+  const [conversationsRefreshKey, setConversationsRefreshKey] = useState(0);
   const [inputMessage, setInputMessage] = useState("");
   const [podcastTopic, setPodcastTopic] = useState("");
   const [showPodcastInput, setShowPodcastInput] = useState(false);
@@ -161,7 +162,25 @@ export default function ChatPage() {
   const loadConversations = async () => {
     try {
       const response = await api.getConversations();
-      setConversations(Array.isArray(response.data) ? response.data : []);
+      const newConversations = Array.isArray(response.data) ? response.data : [];
+      setConversations(newConversations);
+      setConversationsRefreshKey(prev => prev + 1); // Trigger re-render
+      
+      // If we have a currentConvoId but it's not in the new conversations list,
+      // it might be a new conversation that was just created
+      if (currentConvoId && !newConversations.find(c => c._id === currentConvoId)) {
+        // The conversation might not be immediately available, so we'll wait a bit
+        setTimeout(async () => {
+          try {
+            const retryResponse = await api.getConversations();
+            const retryConversations = Array.isArray(retryResponse.data) ? retryResponse.data : [];
+            setConversations(retryConversations);
+            setConversationsRefreshKey(prev => prev + 1); // Trigger re-render
+          } catch (retryError) {
+            console.error("Failed to retry loading conversations:", retryError);
+          }
+        }, 1000);
+      }
     } catch (error) {
       console.error("Failed to load conversations:", error);
       setConversations([]);
@@ -401,6 +420,11 @@ const response = convoId
 
       // Refresh conversations list to show the new conversation
       await loadConversations();
+      
+      // If this was a new conversation, force a re-render
+      if (convoId && !currentConvoId) {
+        setConversationsRefreshKey(prev => prev + 1);
+      }
     } catch (error) {
       console.error("Upload error:", error);
       toast({
@@ -451,7 +475,15 @@ const response = convoId
         };
 
         setMessages((prev) => [...prev, aiMessage]);
-        loadConversations();
+        
+        // Load conversations and ensure the new conversation is selected
+        await loadConversations();
+        
+        // If this was a new conversation, make sure it's selected
+        if (response.convoId && !currentConvoId) {
+          // Force a re-render to ensure the conversation list is updated
+          setConversationsRefreshKey(prev => prev + 1);
+        }
       } else {
         toast({
           title: "Failed to send message",
@@ -854,7 +886,7 @@ const response = convoId
                 Loading conversation...
               </div>
             )}
-            <div className="space-y-2">
+            <div className="space-y-2" key={conversationsRefreshKey}>
               {conversations.map((convo, index) => (
                 <div
                   key={convo._id}
@@ -1134,24 +1166,6 @@ const response = convoId
                               <div className="flex items-center gap-2">
                                 <Button
                                   size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(
-                                      (message as UIDiagramMessage)
-                                        .mermaidSyntax || ""
-                                    );
-                                    toast({
-                                      title: "Copied to clipboard",
-                                      description: "Mermaid syntax copied successfully",
-                                    });
-                                  }}
-                                  className="h-8 px-3 text-xs"
-                                >
-                                  <Copy className="h-3 w-3 mr-1" />
-                                  Copy Syntax
-                                </Button>
-                                <Button
-                                  size="sm"
                                   onClick={() => openDiagramDialog(message as UIDiagramMessage)}
                                   className="h-8 px-3 text-xs"
                                 >
@@ -1337,15 +1351,26 @@ const response = convoId
                   config={{ 
                     theme: "base",
                     mindmap: {
-                      maxNodeSizeRatio: 20,
-                      useMaxWidth: true,
-                      padding: 60,
+                      maxNodeSizeRatio: 0.15,
+                      useMaxWidth: false,
+                      padding: 50,
                       nodeSpacing: 120,
-                      levelSpacing: 200
+                      levelSpacing: 150,
+                      maxNodeWidth: 200,
+                      connectorLineColor: '#6b7280',
+                      connectorLineWidth: 2,
+                      connectorLineCurvature: 0.3
                     }
                   }}
                   height="calc(95vh - 120px)"
                   className="w-full"
+                  debug={true}
+                  onCopyToClipboard={() => {
+                    toast({
+                      title: "Copied to clipboard",
+                      description: "Mermaid syntax copied! Opening Mermaid Live Editor...",
+                    });
+                  }}
                   onError={(error) => {
                     console.error("Diagram error:", error);
                     toast({

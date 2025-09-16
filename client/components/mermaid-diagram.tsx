@@ -21,6 +21,8 @@ interface MermaidDiagramProps {
   height?: string;
   width?: string;
   mode?: 'light' | 'dark';
+  debug?: boolean;
+  onCopyToClipboard?: () => void;
 }
 
 // MermaidDiagram Component
@@ -34,7 +36,9 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   onRender,
   height = 'auto',
   width = '100%',
-  mode
+  mode,
+  debug = false,
+  onCopyToClipboard
 }) => {
   const { resolvedTheme } = useTheme();
   const elementRef = useRef<HTMLDivElement>(null);
@@ -58,19 +62,39 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   const isDark = effectiveMode === 'dark';
   const palette = {
     background: isDark ? '#000000' : '#ffffff',
-    border: isDark ? '#2d3748' : '#e2e8f0',
-    nodeFill: isDark ? '#2d3748' : '#edf2f7',
-    nodeStroke: isDark ? '#4a5568' : '#cbd5e1',
-    textPrimary: isDark ? '#ffffff' : '#1a202c',
-    edge: isDark ? '#a0aec0' : '#4a5568',
-    accent: isDark ? '#805ad5' : '#6b46c1'
+    border: isDark ? '#374151' : '#d1d5db',
+    nodeFill: isDark ? '#1f2937' : '#f3f4f6',
+    nodeStroke: isDark ? '#6b7280' : '#9ca3af',
+    textPrimary: isDark ? '#ffffff' : '#111827',
+    edge: isDark ? '#d1d5db' : '#6b7280',
+    accent: isDark ? '#8b5cf6' : '#7c3aed'
   } as const;
 
   const toolbarBg = isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)';
   const toolbarBorder = palette.border;
-  const buttonBg = isDark ? '#4a5568' : '#e2e8f0';
+  const buttonBg = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
+  const buttonHoverBg = isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)';
   const buttonText = palette.textPrimary;
   const chipBg = isDark ? '#2d3748' : '#edf2f7';
+
+  // Button style helper
+  const getButtonStyle = (isActive = false) => ({
+    background: isActive ? buttonHoverBg : buttonBg,
+    border: 'none',
+    color: buttonText,
+    padding: '8px 12px',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '600',
+    transition: 'all 0.2s ease',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: '36px',
+    height: '36px',
+    gap: '4px'
+  });
 
   // Zoom and pan functions
   const handleZoomIn = () => {
@@ -239,6 +263,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
     }
   };
 
+
   // Export diagram as SVG
   const handleExportSVG = () => {
     if (svgRef.current) {
@@ -260,7 +285,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   // Default Mermaid configuration
   const defaultConfig = {
     startOnLoad: false,
-    theme: isDark ? 'dark' : 'default',
+    theme: isDark ? 'dark' : 'base',
     securityLevel: 'loose',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif',
     fontSize: 14,
@@ -268,12 +293,21 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
       useMaxWidth: true,
       htmlLabels: false,
       curve: 'cardinal',
-      diagramPadding: 10
+      diagramPadding: 20,
+      nodeSpacing: 80,
+      rankSpacing: 80,
+      padding: 20
     },
     mindmap: {
       useMaxWidth: false,
-      padding: 80,
-      maxNodeWidth: 150
+      padding: 50,
+      maxNodeWidth: 200,
+      maxNodeSizeRatio: 0.15,
+      nodeSpacing: 120,
+      levelSpacing: 150,
+      connectorLineColor: palette.edge,
+      connectorLineWidth: 2,
+      connectorLineCurvature: 0.3
     },
     gantt: {
       useMaxWidth: true
@@ -289,9 +323,12 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
       primaryTextColor: palette.textPrimary,
       primaryBorderColor: palette.accent,
       lineColor: palette.edge,
-      fontSize: '16px',
-      fontFamily: 'Arial, sans-serif',
-      background: palette.background
+      fontSize: '14px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif',
+      background: palette.background,
+      mainBkg: palette.background,
+      secondBkg: palette.nodeFill,
+      tertiaryBkg: palette.nodeFill
     }
   };
 
@@ -305,7 +342,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
           const mermaidInstance = mermaidModule.default;
           
           // Initialize with merged config
-          mermaidInstance.initialize({
+          await mermaidInstance.initialize({
             ...defaultConfig,
             ...config
           });
@@ -325,8 +362,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
 
   // Render diagram when mermaid is loaded and chart changes
   useEffect(() => {
-    
-    if (!mermaid || !chart) return;
+    if (!mermaid || !chart || !chart.trim()) return;
     
     const renderDiagram = async () => {
       try {
@@ -340,15 +376,22 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
         
         // Validate syntax first
         const isValid = await mermaid.parse(chart);
-        console.log("Parse result:", isValid);
+        if (debug) {
+          console.log("Mermaid parse result:", isValid);
+          console.log("Chart content:", chart);
+        }
         if (!isValid) {
           throw new Error('Invalid Mermaid syntax');
         }
 
         // Render the diagram
-        console.log("Rendering diagram with ID:", diagramId);
+        if (debug) {
+          console.log("Rendering diagram with ID:", diagramId);
+        }
         const { svg, bindFunctions } = await mermaid.render(diagramId, chart);
-        console.log("Render result:", { svg: svg.substring(0, 100) + "...", bindFunctions: !!bindFunctions });
+        if (debug) {
+          console.log("Render result:", { svg: svg.substring(0, 100) + "...", bindFunctions: !!bindFunctions });
+        }
         
         // Insert SVG into DOM
         if (elementRef.current) {
@@ -390,7 +433,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
               svgElement.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
               svgElement.style.transformOrigin = 'center center';
               
-              // Add custom CSS for mindmap styling
+              // Add custom CSS for diagram styling
             const style = document.createElement('style');
             style.textContent = `
               .mermaid-container * {
@@ -417,64 +460,139 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                 min-height: 300px !important;
                 shape-rendering: geometricPrecision !important;
                 text-rendering: optimizeLegibility !important;
-                image-rendering: crisp-edges !important;
-                background: ${'${palette.background}'} !important;
+                background: ${palette.background} !important;
                 overflow: visible !important;
-                object-fit: contain !important;
                 user-select: none !important;
                 -webkit-user-select: none !important;
                 -moz-user-select: none !important;
                 -ms-user-select: none !important;
-                pointer-events: none !important;
               }
               .mermaid-diagram svg * {
                 user-select: none !important;
                 -webkit-user-select: none !important;
                 -moz-user-select: none !important;
                 -ms-user-select: none !important;
-                pointer-events: none !important;
               }
-              .mermaid-diagram svg .node rect {
-                fill: ${'${palette.nodeFill}'} !important;
-                stroke: ${'${palette.nodeStroke}'} !important;
-                stroke-width: 1.5px !important;
-                rx: 6px !important;
-                ry: 6px !important;
-                min-width: 80px !important;
-                min-height: 30px !important;
+              .mermaid-diagram svg .node rect,
+              .mermaid-diagram svg rect {
+                fill: ${palette.nodeFill} !important;
+                stroke: ${palette.nodeStroke} !important;
+                stroke-width: 2px !important;
+                rx: 8px !important;
+                ry: 8px !important;
                 shape-rendering: geometricPrecision !important;
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)) !important;
               }
-              .mermaid-diagram svg .node text {
-                fill: ${'${palette.textPrimary}'} !important;
+              .mermaid-diagram svg .node text,
+              .mermaid-diagram svg text {
+                fill: ${palette.textPrimary} !important;
                 font-weight: 600 !important;
                 font-size: 14px !important;
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
+                dominant-baseline: middle !important;
+                text-anchor: middle !important;
+              }
+              .mermaid-diagram svg .mindmap-node rect {
+                fill: ${palette.nodeFill} !important;
+                stroke: ${palette.nodeStroke} !important;
+                stroke-width: 2px !important;
+                rx: 8px !important;
+                ry: 8px !important;
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)) !important;
+              }
+              .mermaid-diagram svg .mindmap-node text {
+                fill: ${palette.textPrimary} !important;
+                font-weight: 600 !important;
+                font-size: 14px !important;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
+                dominant-baseline: middle !important;
+                text-anchor: middle !important;
               }
               .mermaid-diagram svg .edgePath path,
               .mermaid-diagram svg path,
               .mermaid-diagram svg line {
-                stroke: ${'${palette.edge}'} !important;
-                stroke-width: 1.5px !important;
+                stroke: ${palette.edge} !important;
+                stroke-width: 2px !important;
                 fill: none !important;
+                opacity: 0.8 !important;
+                stroke-linecap: round !important;
+                stroke-linejoin: round !important;
+              }
+              .mermaid-diagram svg .mindmap-link {
+                stroke: ${palette.edge} !important;
+                stroke-width: 2px !important;
+                opacity: 0.8 !important;
+                stroke-linecap: round !important;
+                stroke-linejoin: round !important;
               }
               .mermaid-diagram svg .edgeLabel {
-                background: ${'${chipBg}'} !important;
-                border: 1px solid ${'${toolbarBorder}'} !important;
+                background: ${isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)'} !important;
+                border: 1px solid ${palette.accent} !important;
                 border-radius: 4px !important;
                 padding: 2px 6px !important;
-                font-size: 12px !important;
-                font-weight: 500 !important;
-                color: ${'${palette.textPrimary}'} !important;
+                font-size: 11px !important;
+                font-weight: 600 !important;
+                color: ${palette.textPrimary} !important;
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+                backdrop-filter: blur(10px) !important;
+              }
+              .mermaid-diagram svg .mindmap-node {
+                fill: ${palette.nodeFill} !important;
+                stroke: ${palette.nodeStroke} !important;
+                stroke-width: 2px !important;
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)) !important;
+              }
+              .mermaid-diagram svg .mindmap-node circle {
+                fill: ${palette.nodeFill} !important;
+                stroke: ${palette.nodeStroke} !important;
+                stroke-width: 3px !important;
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)) !important;
+              }
+              .mermaid-diagram svg .arrowheadPath {
+                fill: ${palette.edge} !important;
+                stroke: ${palette.edge} !important;
+                stroke-width: 1px !important;
+              }
+              .mermaid-diagram svg .arrowheadPath path {
+                fill: ${palette.edge} !important;
+                stroke: ${palette.edge} !important;
+                stroke-width: 1px !important;
+              }
+              .mermaid-diagram svg marker path {
+                fill: ${palette.edge} !important;
+                stroke: ${palette.edge} !important;
+                stroke-width: 1px !important;
               }
             `;
             elementRef.current.appendChild(style);
+          } else {
+            // Fallback if SVG element is not found
+            if (debug) {
+              console.warn("SVG element not found after rendering");
+            }
           }
           
           // Bind any interactive functions (for flowcharts with click events)
           if (bindFunctions) {
             bindFunctions(elementRef.current);
           }
+          
+          // Apply final styling adjustments
+          setTimeout(() => {
+            if (elementRef.current) {
+              const svg = elementRef.current.querySelector('svg');
+              if (svg) {
+                // Ensure proper text alignment
+                const allTexts = svg.querySelectorAll('text');
+                allTexts.forEach((text: any) => {
+                  text.setAttribute('pointer-events', 'none');
+                  text.setAttribute('dominant-baseline', 'middle');
+                  text.setAttribute('text-anchor', 'middle');
+                });
+              }
+            }
+          }, 100);
         }
 
         console.log("Diagram rendered successfully");
@@ -495,16 +613,16 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
               padding: 20px; 
               border: 2px dashed #ff6b6b; 
               border-radius: 8px; 
-              background: #ffe0e0; 
-              color: #d63031;
+              background: ${isDark ? '#2d1b1b' : '#ffe0e0'}; 
+              color: ${isDark ? '#ff6b6b' : '#d63031'};
               text-align: center;
               font-family: monospace;
             ">
-              <h4>Mermaid Syntax Error</h4>
-              <p>${errorMessage}</p>
+              <h4 style="margin: 0 0 10px 0; font-size: 16px;">Mermaid Syntax Error</h4>
+              <p style="margin: 0 0 15px 0; font-size: 14px;">${errorMessage}</p>
               <details style="margin-top: 10px; text-align: left;">
-                <summary>Raw Input</summary>
-                <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;">${chart}</pre>
+                <summary style="cursor: pointer; font-weight: bold;">Raw Input</summary>
+                <pre style="background: ${isDark ? '#1a1a1a' : '#f8f9fa'}; padding: 10px; border-radius: 4px; overflow-x: auto; margin-top: 10px; font-size: 12px; color: ${isDark ? '#e0e0e0' : '#333'};">${chart}</pre>
               </details>
             </div>
           `;
@@ -570,17 +688,20 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
         minHeight: '400px',
         maxHeight: '800px',
         overflow: 'hidden',
-        background: palette.background,
-        borderRadius: '8px',
-        border: `1px solid ${palette.border}`,
-        padding: '10px',
-        boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+        background: `linear-gradient(135deg, ${palette.background} 0%, ${isDark ? '#0a0a0a' : '#f8fafc'} 100%)`,
+        borderRadius: '16px',
+        border: `2px solid ${palette.border}`,
+        padding: '20px',
+        boxShadow: isDark 
+          ? '0 12px 40px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)' 
+          : '0 12px 40px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8)',
         imageRendering: 'crisp-edges',
         position: 'relative',
         userSelect: 'none',
         WebkitUserSelect: 'none',
         MozUserSelect: 'none',
         msUserSelect: 'none',
+        backdropFilter: 'blur(10px)',
         ...style
       }}
     >
@@ -589,16 +710,19 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
         <div 
           style={{
             position: 'absolute',
-            top: '10px',
-            right: '10px',
+            top: '16px',
+            right: '16px',
             zIndex: 10,
             display: 'flex',
-            gap: '8px',
-            background: toolbarBg,
-            padding: '8px',
-            borderRadius: '6px',
-            border: `1px solid ${toolbarBorder}`,
-            backdropFilter: 'blur(10px)'
+            gap: '6px',
+            background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)',
+            padding: '8px 12px',
+            borderRadius: '12px',
+            border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
+            backdropFilter: 'blur(20px)',
+            boxShadow: isDark 
+              ? '0 4px 16px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.2)' 
+              : '0 4px 16px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.05)'
           }}
         >
           {/* Zoom Controls */}
@@ -608,11 +732,25 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
               background: buttonBg,
               border: 'none',
               color: buttonText,
-              padding: '6px 10px',
-              borderRadius: '4px',
+              padding: '8px 12px',
+              borderRadius: '8px',
               cursor: 'pointer',
               fontSize: '14px',
-              fontWeight: 'bold'
+              fontWeight: '600',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: '36px',
+              height: '36px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = buttonHoverBg;
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = buttonBg;
+              e.currentTarget.style.transform = 'scale(1)';
             }}
             title="Zoom Out"
           >
@@ -621,65 +759,81 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
           <span
             style={{
               color: buttonText,
-              padding: '6px 8px',
+              padding: '8px 12px',
               fontSize: '12px',
-              minWidth: '40px',
+              minWidth: '50px',
               textAlign: 'center',
-              background: chipBg,
-              borderRadius: '4px'
+              background: buttonBg,
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '36px',
+              fontWeight: '600'
             }}
           >
             {Math.round(zoom * 100)}%
           </span>
           <button
             onClick={handleZoomIn}
-            style={{
-              background: buttonBg,
-              border: 'none',
-              color: buttonText,
-              padding: '6px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: 'bold'
+            style={getButtonStyle()}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = buttonHoverBg;
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = buttonBg;
+              e.currentTarget.style.transform = 'scale(1)';
             }}
             title="Zoom In"
           >
             +
           </button>
           
-          <div style={{ width: '1px', background: '#4a5568', margin: '0 4px' }} />
+          <div style={{ 
+            width: '1px', 
+            background: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)', 
+            margin: '0 6px',
+            height: '20px',
+            alignSelf: 'center'
+          }} />
           
           {/* Reset */}
           <button
             onClick={handleResetZoom}
-            style={{
-              background: buttonBg,
-              border: 'none',
-              color: buttonText,
-              padding: '6px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px'
+            style={getButtonStyle()}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = buttonHoverBg;
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = buttonBg;
+              e.currentTarget.style.transform = 'scale(1)';
             }}
             title="Reset Zoom"
           >
             Reset
           </button>
           
-          <div style={{ width: '1px', background: '#4a5568', margin: '0 4px' }} />
+          <div style={{ 
+            width: '1px', 
+            background: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)', 
+            margin: '0 6px',
+            height: '20px',
+            alignSelf: 'center'
+          }} />
           
           {/* Copy */}
           <button
             onClick={handleCopy}
-            style={{
-              background: buttonBg,
-              border: 'none',
-              color: buttonText,
-              padding: '6px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px'
+            style={getButtonStyle()}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = buttonHoverBg;
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = buttonBg;
+              e.currentTarget.style.transform = 'scale(1)';
             }}
             title="Copy Diagram"
           >
@@ -689,14 +843,14 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
           {/* Export PNG */}
           <button
             onClick={handleExportPNG}
-            style={{
-              background: buttonBg,
-              border: 'none',
-              color: buttonText,
-              padding: '6px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px'
+            style={getButtonStyle()}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = buttonHoverBg;
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = buttonBg;
+              e.currentTarget.style.transform = 'scale(1)';
             }}
             title="Export as PNG"
           >
@@ -706,31 +860,52 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
           {/* Export SVG */}
           <button
             onClick={handleExportSVG}
-            style={{
-              background: buttonBg,
-              border: 'none',
-              color: buttonText,
-              padding: '6px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px'
+            style={getButtonStyle()}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = buttonHoverBg;
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = buttonBg;
+              e.currentTarget.style.transform = 'scale(1)';
             }}
             title="Export as SVG"
           >
             SVG
           </button>
           
+          {/* Mermaid Live Link */}
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(chart);
+              onCopyToClipboard?.();
+              window.open('https://mermaid.live', '_blank');
+            }}
+            style={getButtonStyle()}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = buttonHoverBg;
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = buttonBg;
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            title="Open in Mermaid Live Editor"
+          >
+            📊 Live
+          </button>
+          
           {/* Toggle Toolbar */}
           <button
             onClick={() => setShowToolbar(false)}
-            style={{
-              background: buttonBg,
-              border: 'none',
-              color: buttonText,
-              padding: '6px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '12px'
+            style={getButtonStyle()}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = buttonHoverBg;
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = buttonBg;
+              e.currentTarget.style.transform = 'scale(1)';
             }}
             title="Hide Toolbar"
           >
@@ -741,26 +916,86 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
       
       {/* Show Toolbar Button (when hidden) */}
       {!showToolbar && (
-        <button
-          onClick={() => setShowToolbar(true)}
-          style={{
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            zIndex: 10,
-            background: toolbarBg,
-            border: `1px solid ${toolbarBorder}`,
-            color: buttonText,
-            padding: '8px',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            backdropFilter: 'blur(10px)'
-          }}
-          title="Show Toolbar"
-        >
-          ⚙️
-        </button>
+        <div style={{
+          position: 'absolute',
+          top: '10px',
+          right: '10px',
+          zIndex: 10,
+          display: 'flex',
+          gap: '8px',
+          alignItems: 'center'
+        }}>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(chart);
+              onCopyToClipboard?.();
+              window.open('https://mermaid.live', '_blank');
+            }}
+            style={{
+              background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)',
+              border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
+              color: buttonText,
+              padding: '8px 12px',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '600',
+              backdropFilter: 'blur(20px)',
+              boxShadow: isDark 
+                ? '0 4px 16px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.2)' 
+                : '0 4px 16px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.05)',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            title="Open in Mermaid Live Editor"
+          >
+            📊 Live
+          </button>
+          <button
+            onClick={() => setShowToolbar(true)}
+            style={{
+              background: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)',
+              border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
+              color: buttonText,
+              padding: '8px',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '600',
+              backdropFilter: 'blur(20px)',
+              boxShadow: isDark 
+                ? '0 4px 16px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.2)' 
+                : '0 4px 16px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.05)',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '36px',
+              height: '36px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            title="Show Toolbar"
+          >
+            ⚙️
+          </button>
+        </div>
       )}
       {/* Grid background */}
       {/* Simple background only (no grid) */}
