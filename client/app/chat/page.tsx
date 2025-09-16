@@ -1157,13 +1157,12 @@ const response = convoId
 
                       {message.type === "text" &&
                         (message as UIDiagramMessage).mermaidSyntax && (
-                          <div className="mb-3 p-3 bg-muted/50 rounded-lg border">
-                            <div className="flex items-center justify-between">
+                          <div className="mb-3 p-3 bg-muted/50 rounded-lg border space-y-2">
+                            <div className="flex items-center gap-4">
                               <div className="flex items-center gap-2">
-                                <GitBranch className="h-4 w-4 text-primary" />
                                 <span className="text-sm font-medium">Here's your diagram</span>
                               </div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-4">
                                 <Button
                                   size="sm"
                                   onClick={() => openDiagramDialog(message as UIDiagramMessage)}

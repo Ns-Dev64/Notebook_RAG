@@ -264,6 +264,84 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
   };
 
 
+  // Helper function to calculate intersection point between line and node boundary
+  const getNodeIntersection = (x1: number, y1: number, x2: number, y2: number, bbox: any) => {
+    const { x, y, width, height } = bbox;
+    
+    // Calculate direction vector
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    
+    if (length === 0) return null;
+    
+    const unitX = dx / length;
+    const unitY = dy / length;
+    
+    // Node boundaries
+    const left = x;
+    const right = x + width;
+    const top = y;
+    const bottom = y + height;
+    
+    // Calculate intersections with each edge
+    const intersections = [];
+    
+    // Left edge
+    if (unitX !== 0) {
+      const t = (left - x1) / unitX;
+      const intersectY = y1 + t * unitY;
+      if (t > 0 && intersectY >= top && intersectY <= bottom) {
+        intersections.push({ x: left, y: intersectY });
+      }
+    }
+    
+    // Right edge
+    if (unitX !== 0) {
+      const t = (right - x1) / unitX;
+      const intersectY = y1 + t * unitY;
+      if (t > 0 && intersectY >= top && intersectY <= bottom) {
+        intersections.push({ x: right, y: intersectY });
+      }
+    }
+    
+    // Top edge
+    if (unitY !== 0) {
+      const t = (top - y1) / unitY;
+      const intersectX = x1 + t * unitX;
+      if (t > 0 && intersectX >= left && intersectX <= right) {
+        intersections.push({ x: intersectX, y: top });
+      }
+    }
+    
+    // Bottom edge
+    if (unitY !== 0) {
+      const t = (bottom - y1) / unitY;
+      const intersectX = x1 + t * unitX;
+      if (t > 0 && intersectX >= left && intersectX <= right) {
+        intersections.push({ x: intersectX, y: bottom });
+      }
+    }
+    
+    // Return the closest intersection to the line start
+    if (intersections.length > 0) {
+      let closest = intersections[0];
+      let minDist = Math.sqrt((closest.x - x1) ** 2 + (closest.y - y1) ** 2);
+      
+      for (let i = 1; i < intersections.length; i++) {
+        const dist = Math.sqrt((intersections[i].x - x1) ** 2 + (intersections[i].y - y1) ** 2);
+        if (dist < minDist) {
+          minDist = dist;
+          closest = intersections[i];
+        }
+      }
+      
+      return closest;
+    }
+    
+    return null;
+  };
+
   // Export diagram as SVG
   const handleExportSVG = () => {
     if (svgRef.current) {
@@ -492,6 +570,10 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                 text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
                 dominant-baseline: middle !important;
                 text-anchor: middle !important;
+                paint-order: stroke fill !important;
+                stroke: ${palette.background} !important;
+                stroke-width: 3px !important;
+                stroke-linejoin: round !important;
               }
               .mermaid-diagram svg .mindmap-node rect {
                 fill: ${palette.nodeFill} !important;
@@ -508,6 +590,10 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                 text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
                 dominant-baseline: middle !important;
                 text-anchor: middle !important;
+                paint-order: stroke fill !important;
+                stroke: ${palette.background} !important;
+                stroke-width: 3px !important;
+                stroke-linejoin: round !important;
               }
               .mermaid-diagram svg .edgePath path,
               .mermaid-diagram svg path,
@@ -518,6 +604,12 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                 opacity: 0.8 !important;
                 stroke-linecap: round !important;
                 stroke-linejoin: round !important;
+              }
+              .mermaid-diagram svg .edgePath {
+                marker-end: url(#arrowhead) !important;
+              }
+              .mermaid-diagram svg .edgePath path {
+                marker-end: url(#arrowhead) !important;
               }
               .mermaid-diagram svg .mindmap-link {
                 stroke: ${palette.edge} !important;
@@ -578,7 +670,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
             bindFunctions(elementRef.current);
           }
           
-          // Apply final styling adjustments
+          // Apply final styling adjustments and fix connection lines
           setTimeout(() => {
             if (elementRef.current) {
               const svg = elementRef.current.querySelector('svg');
@@ -590,9 +682,82 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                   text.setAttribute('dominant-baseline', 'middle');
                   text.setAttribute('text-anchor', 'middle');
                 });
+
+                // Fix connection lines to connect to node boundaries
+                const allNodes = svg.querySelectorAll('.node rect, .node circle, .mindmap-node rect, .mindmap-node circle');
+                const allEdges = svg.querySelectorAll('.edgePath path, path[class*="edge"], path[class*="link"]');
+                
+                allEdges.forEach((edge: any) => {
+                  const pathData = edge.getAttribute('d');
+                  if (pathData && pathData.includes('M') && pathData.includes('L')) {
+                    // Parse path coordinates
+                    const coords = pathData.match(/[ML]\s*([\d.-]+)\s*,\s*([\d.-]+)/g);
+                    if (coords && coords.length >= 2) {
+                      const startMatch = coords[0].match(/[ML]\s*([\d.-]+)\s*,\s*([\d.-]+)/);
+                      const endMatch = coords[coords.length - 1].match(/[ML]\s*([\d.-]+)\s*,\s*([\d.-]+)/);
+                      
+                      if (startMatch && endMatch) {
+                        const startX = parseFloat(startMatch[1]);
+                        const startY = parseFloat(startMatch[2]);
+                        const endX = parseFloat(endMatch[1]);
+                        const endY = parseFloat(endMatch[2]);
+                        
+                        // Find closest nodes to start and end points
+                        let closestStartNode: any = null;
+                        let closestEndNode: any = null;
+                        let minStartDist = Infinity;
+                        let minEndDist = Infinity;
+                        
+                        allNodes.forEach((node: any) => {
+                          try {
+                            const bbox = (node as SVGGraphicsElement).getBBox();
+                            const centerX = bbox.x + bbox.width / 2;
+                            const centerY = bbox.y + bbox.height / 2;
+                            
+                            const startDist = Math.sqrt((startX - centerX) ** 2 + (startY - centerY) ** 2);
+                            const endDist = Math.sqrt((endX - centerX) ** 2 + (endY - centerY) ** 2);
+                            
+                            if (startDist < minStartDist) {
+                              minStartDist = startDist;
+                              closestStartNode = node;
+                            }
+                            if (endDist < minEndDist) {
+                              minEndDist = endDist;
+                              closestEndNode = node;
+                            }
+                          } catch (e) {
+                            // Skip nodes that don't have getBBox method
+                          }
+                        });
+                        
+                        // Adjust path to connect to node boundaries
+                        if (closestStartNode && closestEndNode) {
+                          const startBbox = (closestStartNode as SVGGraphicsElement).getBBox();
+                          const endBbox = (closestEndNode as SVGGraphicsElement).getBBox();
+                          
+                          // Calculate intersection points with node boundaries
+                          const startIntersection = getNodeIntersection(startX, startY, endX, endY, startBbox);
+                          const endIntersection = getNodeIntersection(endX, endY, startX, startY, endBbox);
+                          
+                          if (startIntersection && endIntersection) {
+                            // Rebuild the path with corrected coordinates
+                            const newPathData = pathData.replace(
+                              /M\s*[\d.-]+\s*,\s*[\d.-]+/,
+                              `M ${startIntersection.x},${startIntersection.y}`
+                            ).replace(
+                              /L\s*[\d.-]+\s*,\s*[\d.-]+(?=\s*$)/,
+                              `L ${endIntersection.x},${endIntersection.y}`
+                            );
+                            edge.setAttribute('d', newPathData);
+                          }
+                        }
+                      }
+                    }
+                  }
+                });
               }
             }
-          }, 100);
+          }, 200);
         }
 
         console.log("Diagram rendered successfully");
