@@ -14,7 +14,7 @@ async function getTranscriber() {
 
     if(transcriber) return transcriber;
 
-    transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny');
+    transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny'); 
     return transcriber;
 
 }

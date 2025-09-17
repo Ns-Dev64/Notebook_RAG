@@ -1,4 +1,6 @@
-const API_BASE_URL = "http://localhost:5001/api/v1"
+import { getBaseUrl } from './config'
+
+const API_BASE_URL = getBaseUrl()
 
 interface ApiResponse<T = any> {
   data?: T
@@ -31,6 +33,7 @@ class ApiClient {
     const config: RequestInit = {
       ...options,
       headers: {
+        'ngrok-skip-browser-warning': 'true',
         ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...(token && { Authorization: `Bearer ${token}` }),
         ...options.headers,
